@@ -173,16 +173,33 @@ def _cut_video_reencode(
     else:
         final_label = "v0"
 
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", str(input_path),
-            "-filter_complex", ";".join(filter_parts),
-            "-map", f"[{final_label}]",
-            "-c:v", "libx264", "-crf", "18", "-an",
-            str(output_path),
-        ],
-        check=True, capture_output=True,
-    )
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-filter_complex", ";".join(filter_parts),
+        "-map", f"[{final_label}]",
+        "-c:v", "libx264", "-crf", "18",
+        # direct=auto (libx264 default) uses temporal B-frame prediction, which
+        # looks up co-located motion vectors from frames that no longer exist
+        # after a cut → "co located POCs unavailable" decoder warnings in VLC.
+        # Spatial direct mode avoids co-location lookups entirely.
+        # no-open-gop ensures each GOP is self-contained so decoders can seek
+        # to any cut boundary without stale reference state.
+        "-x264-params", "direct=spatial:no-open-gop=1",
+        "-an",
+    ]
+
+    if n > 1:
+        # IDR keyframes at every segment join guarantee a clean decoder reset
+        # at each cut point, preventing residual reference-frame artifacts.
+        t = 0.0
+        boundaries: list[str] = []
+        for seg in kept[:-1]:
+            t += seg.duration
+            boundaries.append(f"{t:.3f}")
+        cmd += ["-force_key_frames", ",".join(boundaries)]
+
+    cmd.append(str(output_path))
+    subprocess.run(cmd, check=True, capture_output=True)
 
 
 def _cut_with_audio_processing(
