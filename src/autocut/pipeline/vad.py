@@ -28,9 +28,12 @@ def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) ->
 
     max_silence_s = config.vad_max_silence_duration_s
 
+    def _within_bounds(duration: float) -> bool:
+        return duration >= min_silence_s and (max_silence_s is None or duration <= max_silence_s)
+
     for seg in speech_timestamps:
         gap = seg["start"] - prev_end
-        if min_silence_s <= gap <= max_silence_s:
+        if _within_bounds(gap):
             silences.append(BadSegment(
                 segment=Segment(prev_end, seg["start"]),
                 source=SegmentSource.VAD,
@@ -39,7 +42,7 @@ def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) ->
         prev_end = seg["end"]
 
     trailing = duration_s - prev_end
-    if min_silence_s <= trailing <= max_silence_s:
+    if _within_bounds(trailing):
         silences.append(BadSegment(
             segment=Segment(prev_end, duration_s),
             source=SegmentSource.VAD,

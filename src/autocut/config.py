@@ -25,7 +25,8 @@ class AutoCutConfig:
     repetition_min_word_length: int = 2  # ignore single-letter noise from transcription
 
     # VAD silence cap: silences longer than this are kept (Q&A breaks, applause, etc.)
-    vad_max_silence_duration_s: float = 30.0
+    # None = no cap, cut everything (good for YT replays)
+    vad_max_silence_duration_s: float | None = 30.0
 
     # Segment merging
     merge_gap_s: float = 0.2

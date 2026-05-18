@@ -43,6 +43,8 @@ console = Console()
               help="Disable repetition detection.")
 @click.option("--max-silence-s", default=30.0, show_default=True, type=float,
               help="Silences longer than this are kept (Q&A breaks, applause…).")
+@click.option("--no-silence-cap", is_flag=True, default=False,
+              help="Cut all silences regardless of duration (good for YT replays).")
 @click.option("--verbose", "-v", is_flag=True)
 def cli(
     input_file: Path,
@@ -56,6 +58,7 @@ def cli(
     fillers: str | None,
     no_repetitions: bool,
     max_silence_s: float,
+    no_silence_cap: bool,
     verbose: bool,
 ) -> None:
     """Detect hesitations and stutters in a webinar video and export cut regions."""
@@ -64,7 +67,7 @@ def cli(
         whisper_language=language,
         whisper_device=device,
         vad_min_silence_duration_ms=min_silence_ms,
-        vad_max_silence_duration_s=max_silence_s,
+        vad_max_silence_duration_s=None if no_silence_cap else max_silence_s,
         merge_gap_s=merge_gap,
         filler_words=[w.strip() for w in fillers.split(",")] if fillers else AutoCutConfig().filler_words,
         detect_repetitions=not no_repetitions,
