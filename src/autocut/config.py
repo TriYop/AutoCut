@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 @dataclass
 class AutoCutConfig:
     # VAD
-    vad_min_silence_duration_ms: int = 500
-    vad_speech_pad_ms: int = 100
+    vad_min_silence_duration_ms: int = 700
+    vad_speech_pad_ms: int = 150
 
     # Whisper
     whisper_model: str = "small"

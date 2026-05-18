@@ -106,15 +106,20 @@ def _apply_crossfade(
 ) -> np.ndarray:
     fade_n = int(crossfade_ms / 1000 * sr)
     chunks = []
+    n = len(kept)
 
-    for seg in kept:
+    for idx, seg in enumerate(kept):
         start = int(seg.start * sr)
         end = min(int(seg.end * sr), len(audio))
         chunk = audio[start:end].copy()
 
         if fade_n > 0 and len(chunk) > 2 * fade_n:
-            chunk[:fade_n] *= np.linspace(0.0, 1.0, fade_n, dtype=np.float32)
-            chunk[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
+            # Fade-in only after a cut (not at the natural start of the video)
+            if idx > 0:
+                chunk[:fade_n] *= np.linspace(0.0, 1.0, fade_n, dtype=np.float32)
+            # Fade-out only before a cut (not at the natural end of the video)
+            if idx < n - 1:
+                chunk[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
 
         chunks.append(chunk)
 
