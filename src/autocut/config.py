@@ -1,8 +1,11 @@
+"""Central configuration dataclass for all AutoCut pipeline stages."""
+
 from dataclasses import dataclass, field
 
 
 @dataclass
 class AutoCutConfig:
+    """All tunable parameters for detection, merging, and output post-processing."""
     # VAD
     vad_min_silence_duration_ms: int = 700
     vad_speech_pad_ms: int = 150

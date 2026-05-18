@@ -1,3 +1,5 @@
+"""Whisper-based detection of filler words, truncated words, and word repetitions."""
+
 import unicodedata
 from collections import deque
 from pathlib import Path
@@ -15,6 +17,7 @@ _STOP_WORDS = {
 
 
 def _normalize(word: str) -> str:
+    """Strip punctuation, lowercase, and NFC-normalise a word token."""
     word = word.strip().lower()
     word = word.rstrip("-.,;:!?\"'")
     return unicodedata.normalize("NFC", word)
@@ -24,6 +27,7 @@ def detect_fillers_and_repetitions(
     wav_path: Path,
     config: AutoCutConfig,
 ) -> tuple[list[BadSegment], list[BadSegment]]:
+    """Transcribe audio with Whisper and return (filler_segments, repetition_segments)."""
     from faster_whisper import WhisperModel
 
     model = WhisperModel(

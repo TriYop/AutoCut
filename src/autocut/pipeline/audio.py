@@ -1,3 +1,5 @@
+"""Audio extraction helpers: probe media properties and resample to 16 kHz WAV."""
+
 import json
 import subprocess
 import tempfile
@@ -11,6 +13,7 @@ from autocut.models import MediaInfo
 
 
 def probe_media(input_path: Path) -> MediaInfo:
+    """Return duration, frame-rate, and audio-presence for the given media file."""
     try:
         raw = subprocess.run(
             [
@@ -46,6 +49,7 @@ def probe_media(input_path: Path) -> MediaInfo:
 
 
 def extract_audio(input_path: Path, config: AutoCutConfig) -> tuple[Path, MediaInfo]:
+    """Extract a mono 16 kHz PCM WAV to a temp file; caller must delete it."""
     media_info = probe_media(input_path)
 
     if not media_info.has_audio:

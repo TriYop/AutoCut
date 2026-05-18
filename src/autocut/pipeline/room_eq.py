@@ -1,3 +1,5 @@
+"""Room resonance analysis: FFT over VAD silences → notch-filter frequencies."""
+
 from pathlib import Path
 
 import numpy as np

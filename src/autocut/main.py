@@ -1,3 +1,5 @@
+"""CLI entry point: parse options, run the pipeline, write EDL/JSON/video output."""
+
 import sys
 from pathlib import Path
 

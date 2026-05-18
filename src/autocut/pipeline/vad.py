@@ -1,3 +1,5 @@
+"""Silence detection via Silero VAD; returns inter-speech gaps as BadSegments."""
+
 from pathlib import Path
 
 from autocut.config import AutoCutConfig
@@ -5,6 +7,7 @@ from autocut.models import BadSegment, Segment, SegmentSource
 
 
 def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) -> list[BadSegment]:
+    """Return gaps between speech turns that fall within the configured silence bounds."""
     import soundfile as sf
     import torch
     from silero_vad import get_speech_timestamps, load_silero_vad

@@ -1,3 +1,5 @@
+"""Video cutting: stream-copy fast path and audio-processing path (crossfade + room EQ)."""
+
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,6 +17,7 @@ def _compute_kept_segments(
     bad_segments: list[BadSegment],
     duration_s: float,
 ) -> list[Segment]:
+    """Return the complement of bad_segments within [0, duration_s]."""
     kept: list[Segment] = []
     prev_end = 0.0
 
@@ -37,6 +40,7 @@ def cut_video(
     config: AutoCutConfig,
     resonant_freqs: list[float] | None = None,
 ) -> None:
+    """Write a new video with bad_segments removed, choosing the fastest safe path."""
     kept = _compute_kept_segments(bad_segments, media_info.duration_s)
 
     if not kept:

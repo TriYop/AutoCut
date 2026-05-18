@@ -1,3 +1,5 @@
+"""Merge overlapping/adjacent bad segments and apply before/after padding."""
+
 from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, Segment
 
@@ -7,6 +9,7 @@ def merge_bad_segments(
     config: AutoCutConfig,
     total_duration_s: float,
 ) -> list[BadSegment]:
+    """Sort, merge close segments, then expand each by the configured padding."""
     if not segments:
         return []
 

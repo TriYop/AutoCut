@@ -1,3 +1,5 @@
+"""EDL and JSON export of detected cut regions."""
+
 import json
 from pathlib import Path
 
@@ -5,6 +7,7 @@ from autocut.models import BadSegment, MediaInfo
 
 
 def _seconds_to_timecode(seconds: float, fps: float) -> str:
+    """Convert fractional seconds to a CMX 3600 non-drop-frame timecode string."""
     total_frames = round(seconds * fps)
     frames = total_frames % round(fps)
     total_seconds = total_frames // round(fps)
@@ -20,6 +23,7 @@ def write_edl(
     source_filename: str,
     output_path: Path,
 ) -> None:
+    """Write a CMX 3600 EDL marking each bad segment for deletion."""
     fps = media_info.fps
     lines = [
         f"TITLE: AutoCut - {source_filename}",
@@ -45,6 +49,7 @@ def write_json(
     source_filename: str,
     output_path: Path,
 ) -> None:
+    """Write a JSON cut list with timestamps, labels, sources, and confidence scores."""
     data = {
         "source": source_filename,
         "cuts": [

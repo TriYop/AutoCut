@@ -1,3 +1,5 @@
+"""Top-level pipeline orchestrator: audio → VAD → Whisper → merge → result."""
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +17,8 @@ from autocut.pipeline.vad import detect_silences
 
 @dataclass
 class PipelineResult:
+    """Aggregated output from the full detection pipeline."""
+
     input_path: Path
     media_info: MediaInfo
     bad_segments: list[BadSegment]
@@ -22,6 +26,7 @@ class PipelineResult:
 
 
 def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineResult:
+    """Run the full AutoCut pipeline and return all detected bad segments."""
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
