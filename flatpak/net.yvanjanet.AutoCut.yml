@@ -27,11 +27,11 @@ modules:
     build-commands:
       - mkdir -p /app/lib/ffmpeg
 
-  # Python packages are pre-downloaded by the CI workflow into flatpak/pip-packages/
-  # and installed offline here with --no-index --find-links.
+  # All packages (deps + autocut wheel) are pre-downloaded by the CI workflow
+  # into flatpak/pip-packages/ and installed offline here.
   # torch CPU variant keeps the bundle small; CUDA can still be used at runtime
   # if the user has a compatible driver (--device cuda CLI flag).
-  - name: python-deps
+  - name: python-packages
     buildsystem: simple
     build-commands:
       - >-
@@ -39,16 +39,8 @@ modules:
         --no-index --find-links pip-packages
         torch torchaudio
         click rich soundfile ffmpeg-python faster-whisper silero-vad
+        autocut
     sources:
       - type: dir
         path: pip-packages
         dest: pip-packages
-
-  # Install autocut itself (deps already present above)
-  - name: autocut
-    buildsystem: simple
-    build-commands:
-      - pip3 install --prefix=/app --no-deps --ignore-requires-python .
-    sources:
-      - type: dir
-        path: ..

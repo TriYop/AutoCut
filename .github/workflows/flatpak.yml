@@ -38,6 +38,7 @@ jobs:
       # Pre-download all pip packages outside the Flatpak sandbox so the build
       # can run fully offline (newer flatpak-builder removed --disable-sandbox).
       # torch CPU-only wheel (~180 MB) avoids bundling CUDA libraries.
+      # autocut is built as a wheel here too so the sandbox never needs the network.
       - name: Download Python packages
         run: |
           mkdir -p flatpak/pip-packages
@@ -49,6 +50,8 @@ jobs:
             "click>=8.1" "rich>=13.0" "soundfile>=0.13.1" \
             "ffmpeg-python>=0.2" "faster-whisper>=1.0" "silero-vad>=5.1" \
             -d flatpak/pip-packages
+          pip3 install build
+          python3 -m build --wheel --outdir flatpak/pip-packages
 
       - name: Build Flatpak
         run: |
