@@ -17,6 +17,18 @@ from autocut.pipeline.vad import detect_silences
 
 
 class PipelineWorker(QObject):
+    """Runs the AutoCut pipeline on a background QThread and forwards progress via signals.
+
+    Move this object to a QThread before calling run():
+        worker.moveToThread(thread); thread.started.connect(worker.run)
+
+    Signals:
+        log_line(str): one human-readable status line per pipeline stage.
+        finished(object): emits a PipelineResult; typed as object to avoid Qt
+            metatype registration that PySide6 requires for custom C++ types.
+        error(str): emitted instead of finished when any exception occurs.
+    """
+
     log_line = Signal(str)
     finished = Signal(object)  # PipelineResult — object avoids Qt metatype registration
     error = Signal(str)
@@ -36,6 +48,9 @@ class PipelineWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        # Outer try/except is the Qt slot boundary: an unhandled exception raised
+        # inside a slot can terminate the process without a traceback on some
+        # platforms.  _run() holds all the logic; this wrapper catches everything.
         try:
             self._run()
         except AutoCutError as e:

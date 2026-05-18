@@ -20,6 +20,11 @@ from autocut.config import AutoCutConfig
 
 
 class ParamsPanel(QScrollArea):
+    """Scrollable form exposing all AutoCut CLI options grouped by concern.
+
+    Call as_config() to convert current widget state into an AutoCutConfig.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.setWidgetResizable(True)
