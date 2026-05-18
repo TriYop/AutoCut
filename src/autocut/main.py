@@ -35,7 +35,7 @@ console = Console()
               help="Language code (e.g. fr, en). Auto-detect if omitted.")
 @click.option("--device", type=click.Choice(["cpu", "cuda"]), default="cpu", show_default=True,
               help="Device for Whisper inference.")
-@click.option("--min-silence-ms", default=500, show_default=True, type=int,
+@click.option("--min-silence-ms", default=700, show_default=True, type=int,
               help="Minimum silence duration to flag (ms).")
 @click.option("--merge-gap", default=0.2, show_default=True, type=float,
               help="Merge bad segments closer than this many seconds.")

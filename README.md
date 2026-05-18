@@ -51,7 +51,7 @@ autocut [OPTIONS] INPUT_FILE
 | `--model` | `small` | Whisper model size: `tiny` / `base` / `small` / `medium` / `large-v3` |
 | `--language` | auto | Language code (e.g. `fr`, `en`). Omit to auto-detect. |
 | `--device` | `cpu` | Inference device: `cpu` or `cuda` |
-| `--min-silence-ms` | `500` | Minimum silence duration to flag (ms) |
+| `--min-silence-ms` | `700` | Minimum silence duration to flag (ms) |
 | `--max-silence-s` | `30` | Silences longer than this are kept (Q&A breaks, applause…) |
 | `--no-silence-cap` | off | Remove the max-silence guard — cut every silence (good for YT replays) |
 | `--fillers` | built-in | Comma-separated filler word list override (default: `euh,hm,hmm,donc,ben,beh,voilà,eh`) |
@@ -89,7 +89,7 @@ For an input file `my_webinar.mp4` the following outputs are produced:
 |---|---|
 | `my_webinar_cuts.edl` | CMX 3600 EDL — import into Premiere Pro, DaVinci Resolve, etc. |
 | `my_webinar_cuts.json` | Machine-readable cut list with timestamps, labels, and confidence scores |
-| `my_webinar_cleaned.mp4` | Re-encoded video with bad regions removed (`--output video/both`) |
+| `my_webinar_cleaned.mp4` | Cleaned video with bad regions removed; stream-copied by default, re-encoded only when `--crossfade-ms` or `--room-eq` is active (`--output video/both`) |
 
 ### JSON cut list schema
 
