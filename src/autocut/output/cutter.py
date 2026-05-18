@@ -92,17 +92,15 @@ def _load_audio_native(input_path: Path) -> tuple[np.ndarray, int]:
     )
     native_sr = int(probe.stdout.strip())
 
-    proc = subprocess.Popen(
+    result = subprocess.run(
         [
             "ffmpeg", "-i", str(input_path),
             "-f", "f32le", "-ac", "1", "-ar", str(native_sr), "-",
         ],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,  # ffmpeg exits non-zero when writing to stdout pipe; stdout is valid
     )
-    raw = proc.stdout.read()
-    proc.wait()
-
-    return np.frombuffer(raw, dtype=np.float32).copy(), native_sr
+    return np.frombuffer(result.stdout, dtype=np.float32).copy(), native_sr
 
 
 def _apply_crossfade(
@@ -130,6 +128,27 @@ def _apply_crossfade(
     return np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
 
 
+def _segment_filter_chain(i: int, seg: Segment, n: int, crossfade_s: float) -> str:
+    """Return the trim+setpts+optional-fade filter chain string for one segment."""
+    chain = f"[0:v]trim=start={seg.start:.6f}:end={seg.end:.6f},setpts=PTS-STARTPTS"
+    if crossfade_s > 0 and seg.duration > 2 * crossfade_s:
+        if i > 0:
+            chain += f",fade=t=in:st=0:d={crossfade_s:.6f}"
+        if i < n - 1:
+            chain += f",fade=t=out:st={seg.duration - crossfade_s:.6f}:d={crossfade_s:.6f}"
+    return f"{chain}[v{i}]"
+
+
+def _boundary_timestamps(kept: list[Segment]) -> list[str]:
+    """Return cumulative output-timeline timestamps at each segment join."""
+    t = 0.0
+    result: list[str] = []
+    for seg in kept[:-1]:
+        t += seg.duration
+        result.append(f"{t:.3f}")
+    return result
+
+
 def _cut_video_reencode(
     input_path: Path,
     kept: list[Segment],
@@ -149,22 +168,9 @@ def _cut_video_reencode(
 
     crossfade_s = crossfade_ms / 1000.0
     if crossfade_s > 0 and n > 1:
-        min_dur = min(seg.duration for seg in kept)
-        crossfade_s = min(crossfade_s, min_dur / 2.0)
+        crossfade_s = min(crossfade_s, min(seg.duration for seg in kept) / 2.0)
 
-    filter_parts: list[str] = []
-    for i, seg in enumerate(kept):
-        chain = (
-            f"[0:v]trim=start={seg.start:.6f}:end={seg.end:.6f},"
-            f"setpts=PTS-STARTPTS"
-        )
-        if crossfade_s > 0 and seg.duration > 2 * crossfade_s:
-            if i > 0:
-                chain += f",fade=t=in:st=0:d={crossfade_s:.6f}"
-            if i < n - 1:
-                fade_start = seg.duration - crossfade_s
-                chain += f",fade=t=out:st={fade_start:.6f}:d={crossfade_s:.6f}"
-        filter_parts.append(f"{chain}[v{i}]")
+    filter_parts = [_segment_filter_chain(i, seg, n, crossfade_s) for i, seg in enumerate(kept)]
 
     if n > 1:
         concat_inputs = "".join(f"[v{i}]" for i in range(n))
@@ -173,33 +179,26 @@ def _cut_video_reencode(
     else:
         final_label = "v0"
 
-    cmd = [
-        "ffmpeg", "-y", "-i", str(input_path),
-        "-filter_complex", ";".join(filter_parts),
-        "-map", f"[{final_label}]",
-        "-c:v", "libx264", "-crf", "18",
-        # direct=auto (libx264 default) uses temporal B-frame prediction, which
-        # looks up co-located motion vectors from frames that no longer exist
-        # after a cut → "co located POCs unavailable" decoder warnings in VLC.
-        # Spatial direct mode avoids co-location lookups entirely.
-        # no-open-gop ensures each GOP is self-contained so decoders can seek
-        # to any cut boundary without stale reference state.
-        "-x264-params", "direct=spatial:no-open-gop=1",
-        "-an",
-    ]
-
-    if n > 1:
-        # IDR keyframes at every segment join guarantee a clean decoder reset
-        # at each cut point, preventing residual reference-frame artifacts.
-        t = 0.0
-        boundaries: list[str] = []
-        for seg in kept[:-1]:
-            t += seg.duration
-            boundaries.append(f"{t:.3f}")
-        cmd += ["-force_key_frames", ",".join(boundaries)]
-
-    cmd.append(str(output_path))
-    subprocess.run(cmd, check=True, capture_output=True)
+    # direct=auto (libx264 default) uses temporal B-frame prediction, which
+    # looks up co-located motion vectors from frames that no longer exist
+    # after a cut → "co located POCs unavailable" decoder warnings in VLC.
+    # Spatial direct mode avoids co-location lookups; no-open-gop keeps each
+    # GOP self-contained so decoders can seek to any boundary cleanly.
+    # IDR keyframes at segment joins guarantee a clean decoder reset per cut.
+    boundaries = _boundary_timestamps(kept) if n > 1 else []
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-filter_complex", ";".join(filter_parts),
+            "-map", f"[{final_label}]",
+            "-c:v", "libx264", "-crf", "18",
+            "-x264-params", "direct=spatial:no-open-gop=1",
+            "-an",
+            *((["-force_key_frames", ",".join(boundaries)]) if boundaries else []),
+            str(output_path),
+        ],
+        check=True, capture_output=True,
+    )
 
 
 def _cut_with_audio_processing(
