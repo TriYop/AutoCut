@@ -179,11 +179,15 @@ def _cut_video_reencode(
     else:
         final_label = "v0"
 
-    # direct=auto (libx264 default) uses temporal B-frame prediction, which
-    # looks up co-located motion vectors from frames that no longer exist
-    # after a cut → "co located POCs unavailable" decoder warnings in VLC.
-    # Spatial direct mode avoids co-location lookups; no-open-gop keeps each
-    # GOP self-contained so decoders can seek to any boundary cleanly.
+    # B-frames cause "co located POCs unavailable" decoder warnings in VLC
+    # (and other players using hardware H.264 decoding) at cut boundaries.
+    # Root causes: temporal direct prediction needs co-located reference
+    # frames that no longer exist after a concat; b-pyramid allows B-frames
+    # as references for other B-frames, compounding the problem with VA-API
+    # hardware decoders that decode frames in parallel.
+    # Disabling B-frames (-bf 0) is the only option that eliminates all of
+    # these cases; at CRF 18 the quality impact on presentation content is
+    # imperceptible.  no-open-gop keeps GOPs self-contained for clean seeks.
     # IDR keyframes at segment joins guarantee a clean decoder reset per cut.
     boundaries = _boundary_timestamps(kept) if n > 1 else []
     subprocess.run(
@@ -192,7 +196,8 @@ def _cut_video_reencode(
             "-filter_complex", ";".join(filter_parts),
             "-map", f"[{final_label}]",
             "-c:v", "libx264", "-crf", "18",
-            "-x264-params", "direct=spatial:no-open-gop=1",
+            "-bf", "0",
+            "-x264-params", "no-open-gop=1",
             "-an",
             *((["-force_key_frames", ",".join(boundaries)]) if boundaries else []),
             str(output_path),
