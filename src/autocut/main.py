@@ -45,6 +45,12 @@ console = Console()
               help="Silences longer than this are kept (Q&A breaks, applause…).")
 @click.option("--no-silence-cap", is_flag=True, default=False,
               help="Cut all silences regardless of duration (good for YT replays).")
+@click.option("--crossfade-ms", default=0, show_default=True, type=int,
+              help="Fade-out/in duration at each cut point (ms). 0 = disabled. ~120ms recommended.")
+@click.option("--room-eq", is_flag=True, default=False,
+              help="Detect and attenuate room resonance frequencies from silence segments.")
+@click.option("--room-eq-gain", default=-10.0, show_default=True, type=float,
+              help="Attenuation applied to each resonance (dB, negative = cut).")
 @click.option("--verbose", "-v", is_flag=True)
 def cli(
     input_file: Path,
@@ -59,6 +65,9 @@ def cli(
     no_repetitions: bool,
     max_silence_s: float,
     no_silence_cap: bool,
+    crossfade_ms: int,
+    room_eq: bool,
+    room_eq_gain: float,
     verbose: bool,
 ) -> None:
     """Detect hesitations and stutters in a webinar video and export cut regions."""
@@ -71,6 +80,9 @@ def cli(
         merge_gap_s=merge_gap,
         filler_words=[w.strip() for w in fillers.split(",")] if fillers else AutoCutConfig().filler_words,
         detect_repetitions=not no_repetitions,
+        crossfade_ms=crossfade_ms,
+        room_eq_enabled=room_eq,
+        room_eq_gain_db=room_eq_gain,
     )
 
     out_dir = output_dir or input_file.parent
@@ -110,7 +122,7 @@ def cli(
     if output_mode in ("video", "both"):
         video_path = out_dir / f"{stem}_cleaned{input_file.suffix}"
         try:
-            cut_video(input_file, result.bad_segments, result.media_info, video_path)
+            cut_video(input_file, result.bad_segments, result.media_info, video_path, config, result.resonant_freqs)
             console.print(f"[green]Video:[/green] {video_path}")
         except AutoCutError as e:
             console.print(Panel(f"[red]{e}[/red]", title="Video cutting error", border_style="red"))

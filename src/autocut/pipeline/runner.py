@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.console import Console
@@ -8,6 +8,7 @@ from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, MediaInfo
 from autocut.pipeline.audio import extract_audio
 from autocut.pipeline.merger import merge_bad_segments
+from autocut.pipeline.room_eq import analyze_room_resonances
 from autocut.pipeline.transcriber import detect_fillers_and_repetitions
 from autocut.pipeline.vad import detect_silences
 
@@ -17,6 +18,7 @@ class PipelineResult:
     input_path: Path
     media_info: MediaInfo
     bad_segments: list[BadSegment]
+    resonant_freqs: list[float] = field(default_factory=list)
 
 
 def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineResult:
@@ -45,6 +47,17 @@ def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineRe
             total=1,
         )
 
+        resonant_freqs: list[float] = []
+        if config.room_eq_enabled:
+            t4 = progress.add_task("Analysing room resonances…", total=None)
+            resonant_freqs = analyze_room_resonances(audio_path, silence_segs, config)
+            progress.update(
+                t4,
+                description=f"[green]Room EQ: {len(resonant_freqs)} resonance(s) identified",
+                completed=1,
+                total=1,
+            )
+
         audio_path.unlink(missing_ok=True)
 
         all_bad = silence_segs + filler_segs + repetition_segs
@@ -54,4 +67,5 @@ def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineRe
         input_path=input_path,
         media_info=media_info,
         bad_segments=merged,
+        resonant_freqs=resonant_freqs,
     )

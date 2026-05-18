@@ -34,3 +34,13 @@ class AutoCutConfig:
     # Output padding
     padding_before_s: float = 0.05
     padding_after_s: float = 0.05
+
+    # Room EQ
+    room_eq_enabled: bool = False
+    room_eq_threshold_db: float = 10.0   # dB above noise floor to flag a resonance
+    room_eq_max_filters: int = 5         # max number of notch filters to apply
+    room_eq_q_factor: float = 8.0        # higher = narrower notch
+    room_eq_gain_db: float = -10.0       # attenuation in dB (negative = cut)
+
+    # Crossfade at cut points
+    crossfade_ms: int = 0                # 0 = disabled; ~120ms recommended
