@@ -144,14 +144,16 @@ def _cut_with_audio_processing(
     processed = _apply_crossfade(audio, native_sr, kept, config.crossfade_ms)
 
     # Write processed audio to a temp WAV
-    audio_tmp = Path(tempfile.mktemp(suffix=".wav"))
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        audio_tmp = Path(f.name)
     sf.write(str(audio_tmp), processed, native_sr, subtype="FLOAT")
 
     # Apply room EQ via FFmpeg equalizer filter if requested
     eq_filter = build_ffmpeg_eq_filter(resonant_freqs, config) if (config.room_eq_enabled and resonant_freqs) else None
 
     if eq_filter:
-        eq_tmp = Path(tempfile.mktemp(suffix=".wav"))
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            eq_tmp = Path(f.name)
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", str(audio_tmp),
@@ -164,7 +166,8 @@ def _cut_with_audio_processing(
         audio_tmp = eq_tmp
 
     # Cut video stream only (stream copy, no audio)
-    video_tmp = Path(tempfile.mktemp(suffix=".mp4"))
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        video_tmp = Path(f.name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         concat_path = Path(f.name)
         for seg in kept:
