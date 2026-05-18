@@ -19,10 +19,14 @@ from autocut.gui.worker import PipelineWorker
 
 
 class AutoCutMainWindow(QMainWindow):
+    """Top-level window: file picker + params panel + Run button + log pane."""
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("AutoCut")
         self.setMinimumSize(720, 640)
+        # Kept as instance vars so Python's GC does not collect them while
+        # Qt is still dispatching signals across the thread boundary.
         self._thread: QThread | None = None
         self._worker: PipelineWorker | None = None
         self._build_ui()

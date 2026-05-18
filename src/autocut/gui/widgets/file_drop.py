@@ -17,6 +17,11 @@ _VIDEO_FILTER = "Video files (*.mp4 *.mkv *.mov *.avi *.webm);;All files (*)"
 
 
 class FileDropWidget(QGroupBox):
+    """Group box that accepts a video file via drag-and-drop or a Browse dialog.
+
+    Emits file_selected(path) whenever the selection changes.
+    """
+
     file_selected = Signal(str)
 
     def __init__(self) -> None:
