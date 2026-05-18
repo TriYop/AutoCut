@@ -5,10 +5,14 @@ from autocut.models import BadSegment, Segment, SegmentSource
 
 
 def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) -> list[BadSegment]:
-    from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+    import soundfile as sf
+    import torch
+    from silero_vad import get_speech_timestamps, load_silero_vad
 
     model = load_silero_vad()
-    wav = read_audio(str(wav_path), sampling_rate=16000)
+    # torchaudio >= 2.9 dropped its legacy audio backend; load WAV via soundfile instead
+    data, _ = sf.read(str(wav_path), dtype="float32")
+    wav = torch.from_numpy(data)
 
     speech_timestamps = get_speech_timestamps(
         wav,
@@ -22,9 +26,11 @@ def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) ->
     silences: list[BadSegment] = []
     prev_end = 0.0
 
+    max_silence_s = config.vad_max_silence_duration_s
+
     for seg in speech_timestamps:
         gap = seg["start"] - prev_end
-        if gap >= min_silence_s:
+        if min_silence_s <= gap <= max_silence_s:
             silences.append(BadSegment(
                 segment=Segment(prev_end, seg["start"]),
                 source=SegmentSource.VAD,
@@ -33,7 +39,7 @@ def detect_silences(wav_path: Path, duration_s: float, config: AutoCutConfig) ->
         prev_end = seg["end"]
 
     trailing = duration_s - prev_end
-    if trailing >= min_silence_s:
+    if min_silence_s <= trailing <= max_silence_s:
         silences.append(BadSegment(
             segment=Segment(prev_end, duration_s),
             source=SegmentSource.VAD,

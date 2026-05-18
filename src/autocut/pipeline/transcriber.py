@@ -68,7 +68,7 @@ def detect_fillers_and_repetitions(
 
     for i, word in enumerate(words):
         normalized = _normalize(word.word)
-        if not normalized or normalized in _STOP_WORDS:
+        if not normalized or len(normalized) < config.repetition_min_word_length or normalized in _STOP_WORDS:
             window.append((normalized, i))
             if len(window) > config.repetition_window_words:
                 window.popleft()

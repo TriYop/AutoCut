@@ -22,6 +22,10 @@ class AutoCutConfig:
     # Repetition detection
     detect_repetitions: bool = True
     repetition_window_words: int = 3
+    repetition_min_word_length: int = 2  # ignore single-letter noise from transcription
+
+    # VAD silence cap: silences longer than this are kept (Q&A breaks, applause, etc.)
+    vad_max_silence_duration_s: float = 30.0
 
     # Segment merging
     merge_gap_s: float = 0.2
