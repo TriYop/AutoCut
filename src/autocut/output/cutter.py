@@ -130,6 +130,61 @@ def _apply_crossfade(
     return np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
 
 
+def _cut_video_reencode(
+    input_path: Path,
+    kept: list[Segment],
+    output_path: Path,
+    crossfade_ms: int,
+) -> None:
+    """Re-encode kept video segments with optional fade-through-black at cut boundaries.
+
+    Uses trim+setpts per segment so every cut is frame-accurate regardless of
+    keyframe placement.  When crossfade_ms > 0 a fade-out is appended to each
+    non-last segment and a fade-in is prepended to each non-first segment,
+    mirroring the audio crossfade without changing total duration.
+    """
+    n = len(kept)
+    if n == 0:
+        return
+
+    crossfade_s = crossfade_ms / 1000.0
+    if crossfade_s > 0 and n > 1:
+        min_dur = min(seg.duration for seg in kept)
+        crossfade_s = min(crossfade_s, min_dur / 2.0)
+
+    filter_parts: list[str] = []
+    for i, seg in enumerate(kept):
+        chain = (
+            f"[0:v]trim=start={seg.start:.6f}:end={seg.end:.6f},"
+            f"setpts=PTS-STARTPTS"
+        )
+        if crossfade_s > 0 and seg.duration > 2 * crossfade_s:
+            if i > 0:
+                chain += f",fade=t=in:st=0:d={crossfade_s:.6f}"
+            if i < n - 1:
+                fade_start = seg.duration - crossfade_s
+                chain += f",fade=t=out:st={fade_start:.6f}:d={crossfade_s:.6f}"
+        filter_parts.append(f"{chain}[v{i}]")
+
+    if n > 1:
+        concat_inputs = "".join(f"[v{i}]" for i in range(n))
+        filter_parts.append(f"{concat_inputs}concat=n={n}:v=1:a=0[vout]")
+        final_label = "vout"
+    else:
+        final_label = "v0"
+
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-filter_complex", ";".join(filter_parts),
+            "-map", f"[{final_label}]",
+            "-c:v", "libx264", "-crf", "18", "-an",
+            str(output_path),
+        ],
+        check=True, capture_output=True,
+    )
+
+
 def _cut_with_audio_processing(
     input_path: Path,
     kept: list[Segment],
@@ -165,22 +220,11 @@ def _cut_with_audio_processing(
         audio_tmp.unlink(missing_ok=True)
         audio_tmp = eq_tmp
 
-    # Cut video stream only (stream copy, no audio)
+    # Re-encode video segments so cuts are frame-accurate (stream copy would
+    # snap to keyframes, causing drift against the exact-timestamp audio).
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         video_tmp = Path(f.name)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        concat_path = Path(f.name)
-        for seg in kept:
-            f.write(f"file '{input_path}'\n")
-            f.write(f"inpoint {seg.start:.6f}\n")
-            f.write(f"outpoint {seg.end:.6f}\n")
-
-    try:
-        ffmpeg.input(str(concat_path), format="concat", safe=0).output(
-            str(video_tmp), vcodec="copy", an=None
-        ).overwrite_output().run(quiet=True)
-    finally:
-        concat_path.unlink(missing_ok=True)
+    _cut_video_reencode(input_path, kept, video_tmp, config.crossfade_ms)
 
     # Mux video + processed audio
     try:
