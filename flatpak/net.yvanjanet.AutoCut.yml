@@ -1,0 +1,52 @@
+app-id: net.yvanjanet.AutoCut
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: autocut
+
+# FFmpeg is provided as a runtime extension rather than bundled, keeping the
+# package size down.  Users must have org.freedesktop.Platform.ffmpeg-full
+# installed; Flatpak will pull it automatically when installing this bundle.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+    no-autodownload: false
+
+finish-args:
+  - --filesystem=home
+  - --share=network
+  # ffmpeg-full extension binaries land in /app/lib/ffmpeg
+  - --env=PATH=/app/bin:/app/lib/ffmpeg:/usr/bin:/bin
+
+modules:
+  # Create the mount-point directory expected by the ffmpeg-full extension
+  - name: ffmpeg-ext-dir
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/ffmpeg
+
+  # Python packages — pip uses the network during CI builds (--disable-sandbox)
+  # torch CPU variant is used; CUDA is available via the CLI --device cuda flag
+  # at runtime if the user has a compatible driver.
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - >-
+        pip3 install --prefix=/app --ignore-requires-python
+        torch torchaudio
+        --index-url https://download.pytorch.org/whl/cpu
+      - >-
+        pip3 install --prefix=/app --ignore-requires-python
+        "click>=8.1" "rich>=13.0" "soundfile>=0.13.1"
+        "ffmpeg-python>=0.2" "faster-whisper>=1.0" "silero-vad>=5.1"
+
+  # Install autocut itself (deps already present above)
+  - name: autocut
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --ignore-requires-python .
+    sources:
+      - type: dir
+        path: ..
