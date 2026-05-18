@@ -1,5 +1,12 @@
 # AutoCut
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=coverage)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=bugs)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
+
 Automatically detect and remove hesitations, fillers, and stutters from webinar videos.
 
 AutoCut combines Voice Activity Detection (Silero VAD) with speech transcription (Whisper) to find regions worth cutting, then exports an EDL file for NLE import, a JSON summary, or a re-encoded cleaned video.
