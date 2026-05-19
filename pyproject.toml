@@ -1,6 +1,6 @@
 [project]
 name = "autocut"
-version = "0.1.0"
+version = "0.1.1"
 description = "Detect hesitations and stutters in webinar videos and export cut regions"
 authors = [
     { name = "TriYop", email = "dev@yvanjanet.net" }
