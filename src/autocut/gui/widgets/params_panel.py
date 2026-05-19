@@ -1,5 +1,6 @@
 """Parameters panel: all CLI options arranged in tabs by concern."""
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,6 +15,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+try:
+    import torch
+    _CUDA_AVAILABLE = torch.cuda.is_available()
+except Exception:  # noqa: BLE001
+    _CUDA_AVAILABLE = False
 
 from autocut.config import AutoCutConfig
 
@@ -93,6 +100,10 @@ class ParamsPanel(QTabWidget):
 
         self.device = QComboBox()
         self.device.addItems(["cpu", "cuda"])
+        if not _CUDA_AVAILABLE:
+            cuda_item = self.device.model().item(1)
+            cuda_item.setFlags(cuda_item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            self.device.setToolTip("CUDA is not available on this system")
         self.device.setCurrentText(defaults.whisper_device)
         form.addRow("Device:", self.device)
 
