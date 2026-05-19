@@ -103,11 +103,19 @@ def _load_audio_native(input_path: Path) -> tuple[np.ndarray, int]:
     return np.frombuffer(result.stdout, dtype=np.float32).copy(), native_sr
 
 
-def _effective_crossfade_s(kept: list[Segment], crossfade_ms: int) -> float:
-    """Return crossfade duration in seconds, clamped to half the shortest kept segment."""
+def _effective_crossfade_s(kept: list[Segment], crossfade_ms: int, fps: float) -> float:
+    """Return crossfade duration in seconds, clamped so the audio+video timing stays safe.
+
+    trim rounds to frame boundaries causing up to 2/fps (start + end) of duration error per
+    segment.  The video offset uses 2/fps slack per transition; audio must match by overlapping
+    crossfade_s + 2/fps.  To prevent a middle segment from being consumed by two consecutive
+    audio overlaps, we need 2*(crossfade_s + 2/fps) ≤ min_dur, i.e. crossfade_s ≤ min_dur/2 - 2/fps.
+    """
     if crossfade_ms <= 0 or len(kept) <= 1:
         return 0.0
-    return min(crossfade_ms / 1000.0, min(seg.duration for seg in kept) / 2.0)
+    frame_s = 2.0 / fps
+    min_dur = min(seg.duration for seg in kept)
+    return max(0.0, min(crossfade_ms / 1000.0, min_dur / 2.0 - frame_s))
 
 
 def _apply_crossfade(
@@ -139,27 +147,36 @@ def _apply_crossfade(
     return result
 
 
-def _segment_filter_chain(i: int, seg: Segment) -> str:
-    """Return trim+setpts filter chain for one segment; xfade handles transitions."""
+def _segment_filter_chain(i: int, seg: Segment, fps: float) -> str:
+    """Return trim+setpts+fps filter chain for one segment.
+
+    The fps filter normalises each segment to a known constant frame rate.
+    Without it, deeply chained xfade filters lose frame-rate tracking and
+    FFmpeg rejects the graph with "current rate of 1/0 is invalid".
+    """
+    fps_int = round(fps)
     return (
         f"[0:v]trim=start={seg.start:.6f}:end={seg.end:.6f},"
-        f"setpts=PTS-STARTPTS[v{i}]"
+        f"setpts=PTS-STARTPTS,fps={fps_int}[v{i}]"
     )
 
 
-def _xfade_filter_parts(kept: list[Segment], crossfade_s: float) -> tuple[list[str], str]:
+def _xfade_filter_parts(kept: list[Segment], crossfade_s: float, fps: float) -> tuple[list[str], str]:
     """Build the chained xfade dissolve filters and return (parts, final_output_label).
 
-    Each xfade overlaps consecutive segments by crossfade_s seconds.  The offset
-    for the k-th transition is sum(dur[0..k-1]) - k*crossfade_s, which is always
-    positive because crossfade_s <= min_duration/2.
+    Each xfade overlaps consecutive segments by crossfade_s seconds.  The offset for
+    transition k is sum(dur[0..k-1]) - k*(crossfade_s + 2/fps).  The 2/fps slack per
+    transition absorbs frame-boundary rounding by FFmpeg's trim filter: trim can drop up
+    to one frame at the start AND one frame at the end of a segment (2/fps total), so
+    1/fps slack leaves zero margin when both boundaries round against us.
     """
     n = len(kept)
     parts: list[str] = []
     t = 0.0
+    frame_s = 2.0 / fps
     for k in range(1, n):
         t += kept[k - 1].duration
-        offset = t - k * crossfade_s
+        offset = max(0.0, t - k * (crossfade_s + frame_s))
         input_a = "v0" if k == 1 else f"xf{k - 1}"
         parts.append(
             f"[{input_a}][v{k}]xfade=transition=fade"
@@ -168,13 +185,14 @@ def _xfade_filter_parts(kept: list[Segment], crossfade_s: float) -> tuple[list[s
     return parts, f"xf{n - 1}"
 
 
-def _boundary_timestamps(kept: list[Segment], crossfade_s: float) -> list[str]:
+def _boundary_timestamps(kept: list[Segment], crossfade_s: float, fps: float) -> list[str]:
     """Return output-timeline timestamps where each xfade transition begins."""
     t = 0.0
     result: list[str] = []
+    frame_s = 2.0 / fps
     for k, seg in enumerate(kept[:-1]):
         t += seg.duration
-        result.append(f"{t - (k + 1) * crossfade_s:.3f}")
+        result.append(f"{max(0.0, t - (k + 1) * (crossfade_s + frame_s)):.3f}")
     return result
 
 
@@ -183,6 +201,7 @@ def _cut_video_reencode(
     kept: list[Segment],
     output_path: Path,
     crossfade_s: float,
+    fps: float,
 ) -> None:
     """Re-encode kept segments with optional xfade dissolve at cut boundaries.
 
@@ -194,10 +213,10 @@ def _cut_video_reencode(
     if n == 0:
         return
 
-    filter_parts = [_segment_filter_chain(i, seg) for i, seg in enumerate(kept)]
+    filter_parts = [_segment_filter_chain(i, seg, fps) for i, seg in enumerate(kept)]
 
     if n > 1 and crossfade_s > 0:
-        xfade_parts, final_label = _xfade_filter_parts(kept, crossfade_s)
+        xfade_parts, final_label = _xfade_filter_parts(kept, crossfade_s, fps)
         filter_parts.extend(xfade_parts)
     elif n > 1:
         concat_inputs = "".join(f"[v{i}]" for i in range(n))
@@ -210,8 +229,8 @@ def _cut_video_reencode(
     # temporal direct prediction + b-pyramid create reference chains that the
     # parallel hardware decoder cannot resolve.  -bf 0 eliminates this entirely;
     # quality impact at CRF 18 on presentation content is imperceptible.
-    boundaries = _boundary_timestamps(kept, crossfade_s) if n > 1 else []
-    subprocess.run(
+    boundaries = _boundary_timestamps(kept, crossfade_s, fps) if n > 1 else []
+    result = subprocess.run(
         [
             "ffmpeg", "-y", "-i", str(input_path),
             "-filter_complex", ";".join(filter_parts),
@@ -223,8 +242,13 @@ def _cut_video_reencode(
             *((["-force_key_frames", ",".join(boundaries)]) if boundaries else []),
             str(output_path),
         ],
-        check=True, capture_output=True,
+        capture_output=True,
     )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        raise RuntimeError(
+            f"FFmpeg re-encode failed (exit {result.returncode}):\n{stderr}"
+        )
 
 
 def _cut_with_audio_processing(
@@ -235,12 +259,15 @@ def _cut_with_audio_processing(
     config: AutoCutConfig,
     resonant_freqs: list[float],
 ) -> None:
-    # Compute effective crossfade once so audio and video shorten by the same amount.
-    # xfade reduces video duration by (n-1)*crossfade_s; audio overlap does the same.
-    crossfade_s = _effective_crossfade_s(kept, config.crossfade_ms)
+    # crossfade_s is the visual fade duration (xfade -duration).
+    # The video offset per transition uses 2/fps extra slack for frame-boundary rounding,
+    # so the video shorten by (n-1)*(crossfade_s + 2/fps).  The audio must overlap by the
+    # same amount so both streams shrink identically and transitions stay in sync throughout.
+    crossfade_s = _effective_crossfade_s(kept, config.crossfade_ms, media_info.fps)
+    audio_overlap_s = crossfade_s + (2.0 / media_info.fps if crossfade_s > 0 else 0.0)
 
     audio, native_sr = _load_audio_native(input_path)
-    processed = _apply_crossfade(audio, native_sr, kept, crossfade_s)
+    processed = _apply_crossfade(audio, native_sr, kept, audio_overlap_s)
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         audio_tmp = Path(f.name)
@@ -264,7 +291,7 @@ def _cut_with_audio_processing(
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         video_tmp = Path(f.name)
-    _cut_video_reencode(input_path, kept, video_tmp, crossfade_s)
+    _cut_video_reencode(input_path, kept, video_tmp, crossfade_s, media_info.fps)
 
     # Mux video + processed audio
     try:
