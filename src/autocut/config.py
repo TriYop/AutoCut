@@ -47,3 +47,6 @@ class AutoCutConfig:
 
     # Crossfade at cut points
     crossfade_ms: int = 0                # 0 = disabled; ~120ms recommended
+
+    # Pipeline cache
+    use_cache: bool = True

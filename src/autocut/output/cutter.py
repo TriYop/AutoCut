@@ -2,6 +2,8 @@
 
 import subprocess
 import tempfile
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import ffmpeg
@@ -39,8 +41,13 @@ def cut_video(
     output_path: Path,
     config: AutoCutConfig,
     resonant_freqs: list[float] | None = None,
+    progress_cb: Callable[[float, float], None] | None = None,
 ) -> None:
-    """Write a new video with bad_segments removed, choosing the fastest safe path."""
+    """Write a new video with bad_segments removed, choosing the fastest safe path.
+
+    progress_cb(current_s, total_s) is called during re-encode when the audio-processing
+    path is active; it is never called on the stream-copy path (near-instant).
+    """
     kept = _compute_kept_segments(bad_segments, media_info.duration_s)
 
     if not kept:
@@ -51,7 +58,10 @@ def cut_video(
     )
 
     if needs_audio_processing:
-        _cut_with_audio_processing(input_path, kept, media_info, output_path, config, resonant_freqs or [])
+        _cut_with_audio_processing(
+            input_path, kept, media_info, output_path, config,
+            resonant_freqs or [], progress_cb,
+        )
     else:
         _cut_stream_copy(input_path, kept, output_path)
 
@@ -207,6 +217,7 @@ def _cut_video_reencode(
     output_path: Path,
     crossfade_s: float,
     fps: float,
+    progress_cb: Callable[[float, float], None] | None = None,
 ) -> None:
     """Re-encode kept segments with optional xfade dissolve at cut boundaries.
 
@@ -214,6 +225,9 @@ def _cut_video_reencode(
     plain concat otherwise.  B-frames are disabled (-bf 0) to prevent hardware-decoder
     co-located POC warnings: temporal direct prediction + b-pyramid create reference
     chains that VA-API decoders cannot resolve; quality impact at CRF 18 is imperceptible.
+
+    When progress_cb is provided, FFmpeg's -progress pipe is used to stream
+    out_time_us updates; stderr is drained on a background thread to prevent deadlock.
     """
     n = len(kept)
     if n == 0:
@@ -231,25 +245,51 @@ def _cut_video_reencode(
     else:
         final_label = "v0"
 
+    total_s = sum(seg.duration for seg in kept)
+    if crossfade_s > 0 and n > 1:
+        total_s -= (n - 1) * crossfade_s
+
     boundaries = _boundary_timestamps(kept, crossfade_s, fps) if n > 1 else []
-    result = subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", str(input_path),
-            "-filter_complex", ";".join(filter_parts),
-            "-map", f"[{final_label}]",
-            "-c:v", "libx264", "-crf", "18",
-            "-bf", "0",
-            "-x264-params", "no-open-gop=1",
-            "-an",
-            *((["-force_key_frames", ",".join(boundaries)]) if boundaries else []),
-            str(output_path),
-        ],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.decode(errors="replace")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-filter_complex", ";".join(filter_parts),
+        "-map", f"[{final_label}]",
+        "-c:v", "libx264", "-crf", "18",
+        "-bf", "0",
+        "-x264-params", "no-open-gop=1",
+        "-an",
+        *((["-force_key_frames", ",".join(boundaries)]) if boundaries else []),
+        "-progress", "pipe:1",
+        str(output_path),
+    ]
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    stderr_lines: list[str] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr:
+            stderr_lines.extend(proc.stderr.read().splitlines())
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    if proc.stdout:
+        for line in proc.stdout:
+            if progress_cb and line.startswith("out_time_us="):
+                try:
+                    current_s = int(line.split("=", 1)[1]) / 1_000_000
+                    progress_cb(min(current_s, total_s), total_s)
+                except ValueError:
+                    pass
+
+    proc.wait()
+    stderr_thread.join()
+
+    if proc.returncode != 0:
+        stderr = "\n".join(stderr_lines)
         raise RuntimeError(
-            f"FFmpeg re-encode failed (exit {result.returncode}):\n{stderr}"
+            f"FFmpeg re-encode failed (exit {proc.returncode}):\n{stderr}"
         )
 
 
@@ -260,6 +300,7 @@ def _cut_with_audio_processing(
     output_path: Path,
     config: AutoCutConfig,
     resonant_freqs: list[float],
+    progress_cb: Callable[[float, float], None] | None = None,
 ) -> None:
     """Re-encode kept segments with crossfade dissolve and optional room EQ.
 
@@ -296,7 +337,7 @@ def _cut_with_audio_processing(
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         video_tmp = Path(f.name)
-    _cut_video_reencode(input_path, kept, video_tmp, crossfade_s, media_info.fps)
+    _cut_video_reencode(input_path, kept, video_tmp, crossfade_s, media_info.fps, progress_cb)
 
     # Mux video + processed audio
     try:

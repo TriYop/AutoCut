@@ -61,6 +61,7 @@ class AutoCutMainWindow(QMainWindow):
 
         self.file_drop.file_selected.connect(self._on_file_selected)
         self.run_button.clicked.connect(self._on_run)
+        self._encode_total_s: float = 0.0
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ class AutoCutMainWindow(QMainWindow):
         # Wire up: thread start → worker runs; worker done/error → thread stops
         self._thread.started.connect(self._worker.run)
         self._worker.log_line.connect(self._on_pipeline_log)
+        self._worker.encode_progress.connect(self._on_encode_progress)
         self._worker.finished.connect(self._on_pipeline_done)
         self._worker.error.connect(self._on_pipeline_error)
         self._worker.finished.connect(self._thread.quit)
@@ -101,6 +103,13 @@ class AutoCutMainWindow(QMainWindow):
     def _on_pipeline_log(self, line: str) -> None:
         self.log.append(line)
 
+    def _on_encode_progress(self, current_s: float, total_s: float) -> None:
+        if self._encode_total_s == 0.0:
+            self._encode_total_s = total_s
+            self.progress_bar.setRange(0, 1000)
+        if total_s > 0:
+            self.progress_bar.setValue(int(current_s / total_s * 1000))
+
     def _on_pipeline_done(self) -> None:
         self._reset_run_button()
         self.log.append("\nDone.")
@@ -110,6 +119,9 @@ class AutoCutMainWindow(QMainWindow):
         self.log.append(f"\nError: {message}")
 
     def _reset_run_button(self) -> None:
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
+        self._encode_total_s = 0.0
         self.run_button.setText("Run")
         self.run_button.setEnabled(True)

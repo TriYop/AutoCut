@@ -73,6 +73,9 @@ class ParamsPanel(QTabWidget):
         self.padding_after.setValue(defaults.padding_after_s)
         form.addRow("Padding after:", self.padding_after)
 
+        self.no_cache = QCheckBox("Force re-analysis (ignore cache)")
+        form.addRow("", self.no_cache)
+
         self.verbose = QCheckBox("Verbose output")
         form.addRow("", self.verbose)
 
@@ -263,6 +266,7 @@ class ParamsPanel(QTabWidget):
             detect_repetitions=not self.no_repetitions.isChecked(),
             repetition_window_words=self.repetition_window.value(),
             repetition_min_word_length=self.repetition_min_length.value(),
+            use_cache=not self.no_cache.isChecked(),
             crossfade_ms=self.crossfade_ms.value(),
             room_eq_enabled=self.room_eq.isChecked(),
             room_eq_gain_db=self.room_eq_gain.value(),

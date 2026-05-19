@@ -8,6 +8,7 @@ from autocut.config import AutoCutConfig
 from autocut.exceptions import AutoCutError
 from autocut.output.cutter import cut_video
 from autocut.output.edl import write_edl, write_json
+from autocut.pipeline import cache as pipeline_cache
 from autocut.pipeline.audio import extract_audio
 from autocut.pipeline.merger import merge_bad_segments
 from autocut.pipeline.room_eq import analyze_room_resonances
@@ -18,6 +19,7 @@ from autocut.pipeline.vad import detect_silences
 
 class PipelineWorker(QObject):
     log_line = Signal(str)
+    encode_progress = Signal(float, float)  # current_s, total_s
     finished = Signal(object)  # PipelineResult — object avoids Qt metatype registration
     error = Signal(str)
 
@@ -50,15 +52,32 @@ class PipelineWorker(QObject):
             f"Audio extracted  ({media_info.duration_s:.1f}s  {media_info.fps:.2f}fps)"
         )
 
-        self.log_line.emit("Running Voice Activity Detection…")
-        silence_segs = detect_silences(audio_path, media_info.duration_s, self._config)
-        self.log_line.emit(f"VAD: {len(silence_segs)} silence(s) detected")
+        cached = pipeline_cache.load(self._input_path, self._config) if self._config.use_cache else None
 
-        self.log_line.emit(f"Transcribing with Whisper ({self._config.whisper_model})…")
-        filler_segs, repetition_segs = detect_fillers_and_repetitions(audio_path, self._config)
-        self.log_line.emit(
-            f"Whisper: {len(filler_segs)} filler(s)  {len(repetition_segs)} repetition(s)"
-        )
+        if cached is not None:
+            silence_segs, whisper_segs = cached
+            filler_segs = [s for s in whisper_segs if s.source.value != "whisper_repetition"]
+            repetition_segs = [s for s in whisper_segs if s.source.value == "whisper_repetition"]
+            self.log_line.emit(
+                f"Cache hit — skipped VAD + Whisper "
+                f"({len(silence_segs)} silences, {len(filler_segs)} fillers, "
+                f"{len(repetition_segs)} repetitions)"
+            )
+        else:
+            self.log_line.emit("Running Voice Activity Detection…")
+            silence_segs = detect_silences(audio_path, media_info.duration_s, self._config)
+            self.log_line.emit(f"VAD: {len(silence_segs)} silence(s) detected")
+
+            self.log_line.emit(f"Transcribing with Whisper ({self._config.whisper_model})…")
+            filler_segs, repetition_segs = detect_fillers_and_repetitions(audio_path, self._config)
+            self.log_line.emit(
+                f"Whisper: {len(filler_segs)} filler(s)  {len(repetition_segs)} repetition(s)"
+            )
+
+            if self._config.use_cache:
+                pipeline_cache.save(
+                    self._input_path, silence_segs, filler_segs + repetition_segs, self._config
+                )
 
         resonant_freqs: list[float] = []
         if self._config.room_eq_enabled:
@@ -87,6 +106,10 @@ class PipelineWorker(QObject):
         if self._output_mode in ("video", "both"):
             video_path = self._output_dir / f"{stem}_cleaned{self._input_path.suffix}"
             self.log_line.emit("Re-encoding video…")
+
+            def _on_encode_progress(current_s: float, total_s: float) -> None:
+                self.encode_progress.emit(current_s, total_s)
+
             cut_video(
                 self._input_path,
                 merged,
@@ -94,6 +117,7 @@ class PipelineWorker(QObject):
                 video_path,
                 self._config,
                 resonant_freqs,
+                progress_cb=_on_encode_progress,
             )
             self.log_line.emit(f"Video: {video_path}")
 
