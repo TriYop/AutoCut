@@ -6,12 +6,13 @@ from pathlib import Path
 import click
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
 from autocut.config import AutoCutConfig
 from autocut.exceptions import AutoCutError
 from autocut.output.cutter import cut_video
 from autocut.output.edl import write_edl, write_json
-from autocut.pipeline.runner import run
+from autocut.pipeline.runner import PipelineResult, run
 
 console = Console()
 
@@ -77,6 +78,8 @@ console = Console()
               help="Maximum number of notch filters applied by room EQ.")
 @click.option("--room-eq-q", default=8.0, show_default=True, type=float,
               help="Q factor for room EQ notch filters (higher = narrower notch).")
+@click.option("--no-cache", is_flag=True, default=False,
+              help="Force re-analysis even if a fresh cache exists.")
 @click.option("--verbose", "-v", is_flag=True)
 def cli(
     input_file: Path,
@@ -104,6 +107,7 @@ def cli(
     room_eq_threshold: float,
     room_eq_filters: int,
     room_eq_q: float,
+    no_cache: bool,
     verbose: bool,
 ) -> None:
     """Detect hesitations and stutters in a webinar video and export cut regions."""
@@ -129,6 +133,7 @@ def cli(
         room_eq_threshold_db=room_eq_threshold,
         room_eq_max_filters=room_eq_filters,
         room_eq_q_factor=room_eq_q,
+        use_cache=not no_cache,
     )
 
     out_dir = output_dir or input_file.parent
@@ -168,8 +173,47 @@ def cli(
     if output_mode in ("video", "both"):
         video_path = out_dir / f"{stem}_cleaned{input_file.suffix}"
         try:
-            cut_video(input_file, result.bad_segments, result.media_info, video_path, config, result.resonant_freqs)
+            _encode_with_progress(
+                input_file, result, video_path, config, console,
+            )
             console.print(f"[green]Video:[/green] {video_path}")
         except AutoCutError as e:
             console.print(Panel(f"[red]{e}[/red]", title="Video cutting error", border_style="red"))
             sys.exit(e.exit_code)
+
+
+def _encode_with_progress(
+    input_file: Path,
+    result: PipelineResult,
+    video_path: Path,
+    config: AutoCutConfig,
+    console: Console,
+) -> None:
+    """Call cut_video with a Rich progress bar showing encode time and ETA."""
+    encode_progress = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeRemainingColumn(),
+        console=console,
+        transient=True,
+    )
+    task_id: TaskID | None = None
+
+    def _on_progress(current_s: float, total_s: float) -> None:
+        """Create or advance the Rich progress task for each out_time_us update from FFmpeg."""
+        nonlocal task_id
+        if task_id is None:
+            task_id = encode_progress.add_task("Re-encoding…", total=total_s)
+        encode_progress.update(task_id, completed=current_s)
+
+    with encode_progress:
+        cut_video(
+            input_file,
+            result.bad_segments,
+            result.media_info,
+            video_path,
+            config,
+            result.resonant_freqs,
+            progress_cb=_on_progress,
+        )

@@ -267,12 +267,18 @@ def test_boundary_timestamps_clamped_to_zero():
 
 # ── _cut_video_reencode error handling ────────────────────────────────────────
 
-def test_cut_video_reencode_raises_on_ffmpeg_failure():
-    mock_result = MagicMock()
-    mock_result.returncode = 1
-    mock_result.stderr = b"some ffmpeg error"
+def _mock_popen(returncode: int, stderr_text: str) -> MagicMock:
+    """Build a subprocess.Popen mock that fails with the given stderr."""
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.stdout = iter([])
+    proc.stderr.read.return_value = stderr_text
+    proc.wait.return_value = None
+    return proc
 
-    with patch("autocut.output.cutter.subprocess.run", return_value=mock_result):
+
+def test_cut_video_reencode_raises_on_ffmpeg_failure():
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=_mock_popen(1, "some ffmpeg error")):
         from autocut.output.cutter import _cut_video_reencode
         from pathlib import Path
         with pytest.raises(RuntimeError, match="FFmpeg re-encode failed"):
@@ -280,11 +286,7 @@ def test_cut_video_reencode_raises_on_ffmpeg_failure():
 
 
 def test_cut_video_reencode_error_includes_stderr():
-    mock_result = MagicMock()
-    mock_result.returncode = 234
-    mock_result.stderr = b"rate of 1/0 is invalid"
-
-    with patch("autocut.output.cutter.subprocess.run", return_value=mock_result):
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=_mock_popen(234, "rate of 1/0 is invalid")):
         from autocut.output.cutter import _cut_video_reencode
         from pathlib import Path
         with pytest.raises(RuntimeError, match="rate of 1/0 is invalid"):

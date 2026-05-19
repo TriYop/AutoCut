@@ -58,7 +58,7 @@ AutoCut ships a graphical interface for users who prefer not to use the command 
 
 1. Drop a video file onto the drop zone, or click **Browse** to select one.
 2. Adjust parameters across the four tabs (see below).
-3. Click **Run**. Progress is shown in the log area at the bottom.
+3. Click **Run**. A progress bar tracks the re-encode stage; the log area shows all pipeline steps.
 
 **Tabs:**
 
@@ -123,6 +123,14 @@ autocut [OPTIONS] INPUT_FILE
 | `--room-eq-filters` | `5` | Maximum number of notch filters applied |
 | `--room-eq-q` | `8.0` | Q factor for notch filters (higher = narrower notch) |
 
+### Pipeline cache
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-cache` | off | Force re-analysis even if a valid cache exists |
+
+AutoCut writes a sidecar cache file (`video.mp4.autocut-cache.json`) after the first run. On subsequent runs with the same input file and detection settings, the slow VAD + Whisper stages are skipped automatically. The cache is invalidated whenever the input file changes (size or mtime) or any detection parameter changes.
+
 ### Misc
 
 | Option | Default | Description |
@@ -140,6 +148,7 @@ For an input file `my_webinar.mp4` the following outputs are produced:
 | `my_webinar_cuts.edl` | CMX 3600 EDL — import into Premiere Pro, DaVinci Resolve, etc. |
 | `my_webinar_cuts.json` | Machine-readable cut list with timestamps, labels, and confidence scores |
 | `my_webinar_cleaned.mp4` | Cleaned video with bad regions removed; stream-copied by default, re-encoded only when `--crossfade-ms` or `--room-eq` is active (`--output video/both`) |
+| `my_webinar.mp4.autocut-cache.json` | Detection cache — deleted or recreated automatically; not intended for direct editing |
 
 ### JSON cut list schema
 

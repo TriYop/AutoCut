@@ -8,6 +8,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, MediaInfo
+from autocut.pipeline import cache as pipeline_cache
 from autocut.pipeline.audio import extract_audio
 from autocut.pipeline.merger import merge_bad_segments
 from autocut.pipeline.room_eq import analyze_room_resonances
@@ -39,18 +40,35 @@ def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineRe
         audio_path, media_info = extract_audio(input_path, config)
         progress.update(t1, description="[green]Audio extracted", completed=1, total=1)
 
-        t2 = progress.add_task("Voice Activity Detection…", total=None)
-        silence_segs = detect_silences(audio_path, media_info.duration_s, config)
-        progress.update(t2, description=f"[green]VAD done ({len(silence_segs)} silences)", completed=1, total=1)
+        cached = pipeline_cache.load(input_path, config) if config.use_cache else None
 
-        t3 = progress.add_task("Transcribing with Whisper…", total=None)
-        filler_segs, repetition_segs = detect_fillers_and_repetitions(audio_path, config)
-        progress.update(
-            t3,
-            description=f"[green]Whisper done ({len(filler_segs)} fillers, {len(repetition_segs)} repetitions)",
-            completed=1,
-            total=1,
-        )
+        if cached is not None:
+            silence_segs, whisper_segs = cached
+            filler_segs = [s for s in whisper_segs if s.source.value != "whisper_repetition"]
+            repetition_segs = [s for s in whisper_segs if s.source.value == "whisper_repetition"]
+            progress.add_task(
+                f"[green]Cache hit — skipped VAD + Whisper "
+                f"({len(silence_segs)} silences, {len(filler_segs)} fillers, "
+                f"{len(repetition_segs)} repetitions)",
+                total=1,
+                completed=1,
+            )
+        else:
+            t2 = progress.add_task("Voice Activity Detection…", total=None)
+            silence_segs = detect_silences(audio_path, media_info.duration_s, config)
+            progress.update(t2, description=f"[green]VAD done ({len(silence_segs)} silences)", completed=1, total=1)
+
+            t3 = progress.add_task("Transcribing with Whisper…", total=None)
+            filler_segs, repetition_segs = detect_fillers_and_repetitions(audio_path, config)
+            progress.update(
+                t3,
+                description=f"[green]Whisper done ({len(filler_segs)} fillers, {len(repetition_segs)} repetitions)",
+                completed=1,
+                total=1,
+            )
+
+            if config.use_cache:
+                pipeline_cache.save(input_path, silence_segs, filler_segs + repetition_segs, config)
 
         resonant_freqs: list[float] = []
         if config.room_eq_enabled:

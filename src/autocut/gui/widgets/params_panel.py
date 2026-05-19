@@ -26,7 +26,10 @@ from autocut.config import AutoCutConfig
 
 
 class ParamsPanel(QTabWidget):
+    """Tab widget exposing all AutoCutConfig fields grouped by concern."""
+
     def __init__(self) -> None:
+        """Build the four parameter tabs and add them to the widget."""
         super().__init__()
         self.addTab(self._output_tab(), "Output")
         self.addTab(self._whisper_tab(), "Whisper")
@@ -36,6 +39,7 @@ class ParamsPanel(QTabWidget):
     # ── Tab builders ──────────────────────────────────────────────────────────
 
     def _output_tab(self) -> QWidget:
+        """Build and return the Output tab (mode, directory, padding, cache, verbosity)."""
         defaults = AutoCutConfig()
         tab = QWidget()
         form = QFormLayout(tab)
@@ -73,17 +77,22 @@ class ParamsPanel(QTabWidget):
         self.padding_after.setValue(defaults.padding_after_s)
         form.addRow("Padding after:", self.padding_after)
 
+        self.no_cache = QCheckBox("Force re-analysis (ignore cache)")
+        form.addRow("", self.no_cache)
+
         self.verbose = QCheckBox("Verbose output")
         form.addRow("", self.verbose)
 
         return tab
 
     def _browse_output_dir(self) -> None:
+        """Open a directory chooser and write the result into the output-dir field."""
         d = QFileDialog.getExistingDirectory(self, "Select output directory")
         if d:
             self.output_dir.setText(d)
 
     def _whisper_tab(self) -> QWidget:
+        """Build and return the Whisper tab (model, language, device, compute type)."""
         defaults = AutoCutConfig()
         tab = QWidget()
         form = QFormLayout(tab)
@@ -115,6 +124,7 @@ class ParamsPanel(QTabWidget):
         return tab
 
     def _detection_tab(self) -> QWidget:
+        """Build and return the Detection tab (silence, merge gap, fillers, repetitions)."""
         defaults = AutoCutConfig()
         tab = QWidget()
         form = QFormLayout(tab)
@@ -186,6 +196,7 @@ class ParamsPanel(QTabWidget):
         return tab
 
     def _audio_tab(self) -> QWidget:
+        """Build and return the Audio tab (crossfade and room EQ controls)."""
         defaults = AutoCutConfig()
         tab = QWidget()
         form = QFormLayout(tab)
@@ -263,6 +274,7 @@ class ParamsPanel(QTabWidget):
             detect_repetitions=not self.no_repetitions.isChecked(),
             repetition_window_words=self.repetition_window.value(),
             repetition_min_word_length=self.repetition_min_length.value(),
+            use_cache=not self.no_cache.isChecked(),
             crossfade_ms=self.crossfade_ms.value(),
             room_eq_enabled=self.room_eq.isChecked(),
             room_eq_gain_db=self.room_eq_gain.value(),
@@ -273,12 +285,15 @@ class ParamsPanel(QTabWidget):
 
     @property
     def output_mode_value(self) -> str:
+        """Currently selected output mode string (edl / video / both)."""
         return self.output_mode.currentText()
 
     @property
     def output_dir_value(self) -> str:
+        """Output directory path entered by the user, or empty string if not set."""
         return self.output_dir.text().strip()
 
     @property
     def verbose_value(self) -> bool:
+        """True when the verbose-output checkbox is checked."""
         return self.verbose.isChecked()
