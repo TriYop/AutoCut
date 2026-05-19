@@ -201,6 +201,7 @@ def _encode_with_progress(
     task_id: TaskID | None = None
 
     def _on_progress(current_s: float, total_s: float) -> None:
+        """Create or advance the Rich progress task for each out_time_us update from FFmpeg."""
         nonlocal task_id
         if task_id is None:
             task_id = encode_progress.add_task("Re-encoding…", total=total_s)

@@ -11,6 +11,7 @@ CACHE_FORMAT_VERSION = 1
 
 
 def _fingerprint(path: Path) -> dict[str, object]:
+    """Return a dict capturing the file's identity (path, mtime, size) for cache invalidation."""
     stat = path.stat()
     return {"path": str(path.resolve()), "mtime": stat.st_mtime, "size": stat.st_size}
 
@@ -40,6 +41,7 @@ def cache_path(input_path: Path) -> Path:
 
 
 def _seg_to_dict(seg: BadSegment) -> dict[str, object]:
+    """Serialise a BadSegment to a JSON-compatible dict."""
     return {
         "start": seg.segment.start,
         "end": seg.segment.end,
@@ -50,6 +52,7 @@ def _seg_to_dict(seg: BadSegment) -> dict[str, object]:
 
 
 def _dict_to_seg(d: dict[str, object]) -> BadSegment:
+    """Deserialise a BadSegment from the JSON-compatible dict produced by _seg_to_dict."""
     return BadSegment(
         segment=Segment(float(d["start"]), float(d["end"])),
         source=SegmentSource(d["source"]),

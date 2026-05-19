@@ -268,6 +268,7 @@ def _cut_video_reencode(
     stderr_lines: list[str] = []
 
     def _drain_stderr() -> None:
+        """Read all FFmpeg stderr so the pipe buffer never blocks the main thread."""
         if proc.stderr:
             stderr_lines.extend(proc.stderr.read().splitlines())
 

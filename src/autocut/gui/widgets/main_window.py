@@ -19,7 +19,10 @@ from autocut.gui.worker import PipelineWorker
 
 
 class AutoCutMainWindow(QMainWindow):
+    """Top-level application window: file drop, parameters panel, run button, log."""
+
     def __init__(self) -> None:
+        """Initialise the window and build its UI."""
         super().__init__()
         self.setWindowTitle("AutoCut")
         self.setMinimumSize(720, 640)
@@ -28,6 +31,7 @@ class AutoCutMainWindow(QMainWindow):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        """Create and arrange all child widgets."""
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
@@ -49,7 +53,8 @@ class AutoCutMainWindow(QMainWindow):
         layout.addLayout(run_row)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)  # indeterminate / busy indicator
+        # range(0, 0) = indeterminate busy indicator until encoding starts
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
@@ -66,9 +71,11 @@ class AutoCutMainWindow(QMainWindow):
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _on_file_selected(self, path: str) -> None:
+        """Enable the Run button once a valid file path is provided."""
         self.run_button.setEnabled(bool(path))
 
     def _on_run(self) -> None:
+        """Spawn the pipeline worker thread and start the AutoCut pipeline."""
         input_path = Path(self.file_drop.path)
         output_dir_str = self.params.output_dir_value
         output_dir = Path(output_dir_str) if output_dir_str else input_path.parent
@@ -83,7 +90,7 @@ class AutoCutMainWindow(QMainWindow):
         )
         self._worker.moveToThread(self._thread)
 
-        # Wire up: thread start → worker runs; worker done/error → thread stops
+        # thread start → worker runs; worker done/error → thread stops
         self._thread.started.connect(self._worker.run)
         self._worker.log_line.connect(self._on_pipeline_log)
         self._worker.encode_progress.connect(self._on_encode_progress)
@@ -101,9 +108,11 @@ class AutoCutMainWindow(QMainWindow):
         self._thread.start()
 
     def _on_pipeline_log(self, line: str) -> None:
+        """Append a log line emitted by the worker to the log area."""
         self.log.append(line)
 
     def _on_encode_progress(self, current_s: float, total_s: float) -> None:
+        """Switch the progress bar to determinate mode and update its value."""
         if self._encode_total_s == 0.0:
             self._encode_total_s = total_s
             self.progress_bar.setRange(0, 1000)
@@ -111,14 +120,17 @@ class AutoCutMainWindow(QMainWindow):
             self.progress_bar.setValue(int(current_s / total_s * 1000))
 
     def _on_pipeline_done(self) -> None:
+        """Handle successful pipeline completion."""
         self._reset_run_button()
         self.log.append("\nDone.")
 
     def _on_pipeline_error(self, message: str) -> None:
+        """Handle a pipeline error by logging it and re-enabling the Run button."""
         self._reset_run_button()
         self.log.append(f"\nError: {message}")
 
     def _reset_run_button(self) -> None:
+        """Restore the Run button and progress bar to their idle state."""
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)

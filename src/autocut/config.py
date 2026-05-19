@@ -25,7 +25,8 @@ class AutoCutConfig:
     # Repetition detection
     detect_repetitions: bool = True
     repetition_window_words: int = 3
-    repetition_min_word_length: int = 2  # ignore single-letter noise from transcription
+    # Minimum length prevents single-letter transcription noise from matching
+    repetition_min_word_length: int = 2
 
     # VAD silence cap: silences longer than this are kept (Q&A breaks, applause, etc.)
     # None = no cap, cut everything (good for YT replays)
@@ -40,13 +41,18 @@ class AutoCutConfig:
 
     # Room EQ
     room_eq_enabled: bool = False
-    room_eq_threshold_db: float = 10.0   # dB above noise floor to flag a resonance
-    room_eq_max_filters: int = 5         # max number of notch filters to apply
-    room_eq_q_factor: float = 8.0        # higher = narrower notch
-    room_eq_gain_db: float = -10.0       # attenuation in dB (negative = cut)
+    # Minimum peak height above noise floor required to flag a resonance
+    room_eq_threshold_db: float = 10.0
+    # Maximum number of notch filters applied per analysis
+    room_eq_max_filters: int = 5
+    # Higher Q = narrower notch; lower Q = broader attenuation
+    room_eq_q_factor: float = 8.0
+    # Attenuation in dB — negative value cuts the resonance
+    room_eq_gain_db: float = -10.0
 
     # Crossfade at cut points
-    crossfade_ms: int = 0                # 0 = disabled; ~120ms recommended
+    # 0 = disabled; ~120 ms recommended for smooth transitions
+    crossfade_ms: int = 0
 
     # Pipeline cache
     use_cache: bool = True

@@ -18,9 +18,13 @@ from autocut.pipeline.vad import detect_silences
 
 
 class PipelineWorker(QObject):
+    """QObject that runs the full AutoCut pipeline on a background QThread."""
+
     log_line = Signal(str)
-    encode_progress = Signal(float, float)  # current_s, total_s
-    finished = Signal(object)  # PipelineResult — object avoids Qt metatype registration
+    # (current_s, total_s) — emitted during video re-encode
+    encode_progress = Signal(float, float)
+    # PipelineResult passed as object to avoid Qt metatype registration
+    finished = Signal(object)
     error = Signal(str)
 
     def __init__(
@@ -30,6 +34,7 @@ class PipelineWorker(QObject):
         output_dir: Path,
         config: AutoCutConfig,
     ) -> None:
+        """Store pipeline parameters; the worker is moved to a QThread before run() is called."""
         super().__init__()
         self._input_path = input_path
         self._output_mode = output_mode
@@ -38,6 +43,7 @@ class PipelineWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        """Entry point called by QThread.started; delegates to _run and emits error on failure."""
         try:
             self._run()
         except AutoCutError as e:
@@ -46,6 +52,7 @@ class PipelineWorker(QObject):
             self.error.emit(f"Unexpected error: {e}")
 
     def _run(self) -> None:
+        """Run each pipeline stage in order, emitting log lines and signals throughout."""
         self.log_line.emit("Extracting audio…")
         audio_path, media_info = extract_audio(self._input_path, self._config)
         self.log_line.emit(
@@ -108,6 +115,7 @@ class PipelineWorker(QObject):
             self.log_line.emit("Re-encoding video…")
 
             def _on_encode_progress(current_s: float, total_s: float) -> None:
+                """Forward encode progress from the cutter to the encode_progress signal."""
                 self.encode_progress.emit(current_s, total_s)
 
             cut_video(
