@@ -29,47 +29,81 @@ console = Console()
     "--output-dir", type=click.Path(path_type=Path), default=None,
     help="Directory for output files (default: same as input).",
 )
+@click.option("--padding-before", default=0.05, show_default=True, type=float,
+              help="Seconds of speech to keep before each cut.")
+@click.option("--padding-after", default=0.05, show_default=True, type=float,
+              help="Seconds of speech to keep after each cut.")
 @click.option("--model", default="small", show_default=True,
               help="Whisper model: tiny/base/small/medium/large-v3")
 @click.option("--language", default=None,
               help="Language code (e.g. fr, en). Auto-detect if omitted.")
 @click.option("--device", type=click.Choice(["cpu", "cuda"]), default="cpu", show_default=True,
               help="Device for Whisper inference.")
+@click.option(
+    "--compute-type",
+    type=click.Choice(["int8", "float16", "float32"]),
+    default="int8", show_default=True,
+    help="Whisper quantisation: int8 (fastest), float16 (GPU), float32 (full precision).",
+)
 @click.option("--min-silence-ms", default=700, show_default=True, type=int,
               help="Minimum silence duration to flag (ms).")
+@click.option("--speech-pad-ms", default=150, show_default=True, type=int,
+              help="Silence padding added around detected speech to avoid clipping (ms).")
 @click.option("--merge-gap", default=0.2, show_default=True, type=float,
               help="Merge bad segments closer than this many seconds.")
-@click.option("--fillers", default=None,
-              help="Comma-separated filler word list override.")
-@click.option("--no-repetitions", is_flag=True, default=False,
-              help="Disable repetition detection.")
 @click.option("--max-silence-s", default=30.0, show_default=True, type=float,
               help="Silences longer than this are kept (Q&A breaks, applause…).")
 @click.option("--no-silence-cap", is_flag=True, default=False,
               help="Cut all silences regardless of duration (good for YT replays).")
+@click.option("--fillers", default=None,
+              help="Comma-separated filler word list override.")
+@click.option("--min-filler-duration", default=0.3, show_default=True, type=float,
+              help="Minimum filler word duration to flag (s). Shorter utterances are ignored.")
+@click.option("--no-repetitions", is_flag=True, default=False,
+              help="Disable repetition detection.")
+@click.option("--repetition-window", default=3, show_default=True, type=int,
+              help="Number of consecutive words checked for repetitions.")
+@click.option("--repetition-min-length", default=2, show_default=True, type=int,
+              help="Minimum word length considered for repetition detection.")
 @click.option("--crossfade-ms", default=0, show_default=True, type=int,
               help="Fade-out/in duration at each cut point (ms). 0 = disabled. ~120ms recommended.")
 @click.option("--room-eq", is_flag=True, default=False,
               help="Detect and attenuate room resonance frequencies from silence segments.")
 @click.option("--room-eq-gain", default=-10.0, show_default=True, type=float,
               help="Attenuation applied to each resonance (dB, negative = cut).")
+@click.option("--room-eq-threshold", default=10.0, show_default=True, type=float,
+              help="Minimum peak height above noise floor to flag a resonance (dB).")
+@click.option("--room-eq-filters", default=5, show_default=True, type=int,
+              help="Maximum number of notch filters applied by room EQ.")
+@click.option("--room-eq-q", default=8.0, show_default=True, type=float,
+              help="Q factor for room EQ notch filters (higher = narrower notch).")
 @click.option("--verbose", "-v", is_flag=True)
 def cli(
     input_file: Path,
     output_mode: str,
     output_dir: Path | None,
+    padding_before: float,
+    padding_after: float,
     model: str,
     language: str | None,
     device: str,
+    compute_type: str,
     min_silence_ms: int,
+    speech_pad_ms: int,
     merge_gap: float,
-    fillers: str | None,
-    no_repetitions: bool,
     max_silence_s: float,
     no_silence_cap: bool,
+    fillers: str | None,
+    min_filler_duration: float,
+    no_repetitions: bool,
+    repetition_window: int,
+    repetition_min_length: int,
     crossfade_ms: int,
     room_eq: bool,
     room_eq_gain: float,
+    room_eq_threshold: float,
+    room_eq_filters: int,
+    room_eq_q: float,
     verbose: bool,
 ) -> None:
     """Detect hesitations and stutters in a webinar video and export cut regions."""
@@ -77,14 +111,24 @@ def cli(
         whisper_model=model,
         whisper_language=language,
         whisper_device=device,
+        whisper_compute_type=compute_type,
         vad_min_silence_duration_ms=min_silence_ms,
+        vad_speech_pad_ms=speech_pad_ms,
         vad_max_silence_duration_s=None if no_silence_cap else max_silence_s,
         merge_gap_s=merge_gap,
+        padding_before_s=padding_before,
+        padding_after_s=padding_after,
         filler_words=[w.strip() for w in fillers.split(",")] if fillers else AutoCutConfig().filler_words,
+        min_filler_duration_s=min_filler_duration,
         detect_repetitions=not no_repetitions,
+        repetition_window_words=repetition_window,
+        repetition_min_word_length=repetition_min_length,
         crossfade_ms=crossfade_ms,
         room_eq_enabled=room_eq,
         room_eq_gain_db=room_eq_gain,
+        room_eq_threshold_db=room_eq_threshold,
+        room_eq_max_filters=room_eq_filters,
+        room_eq_q_factor=room_eq_q,
     )
 
     out_dir = output_dir or input_file.parent
