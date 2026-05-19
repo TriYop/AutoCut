@@ -59,6 +59,10 @@ def cut_video(
 # ── Stream-copy path (fast, lossless) ────────────────────────────────────────
 
 def _cut_stream_copy(input_path: Path, kept: list[Segment], output_path: Path) -> None:
+    """Concatenate kept segments via stream-copy (no re-encode) using FFmpeg concat demuxer.
+
+    Falls back to libx264/aac re-encode if stream-copy fails (e.g. mixed codec sources).
+    """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         concat_path = Path(f.name)
         for seg in kept:
@@ -98,7 +102,8 @@ def _load_audio_native(input_path: Path) -> tuple[np.ndarray, int]:
             "-f", "f32le", "-ac", "1", "-ar", str(native_sr), "-",
         ],
         capture_output=True,
-        check=False,  # ffmpeg exits non-zero when writing to stdout pipe; stdout is valid
+        # ffmpeg exits non-zero when writing to a stdout pipe; the audio data in stdout is valid
+        check=False,
     )
     return np.frombuffer(result.stdout, dtype=np.float32).copy(), native_sr
 
@@ -206,8 +211,9 @@ def _cut_video_reencode(
     """Re-encode kept segments with optional xfade dissolve at cut boundaries.
 
     Uses xfade when crossfade_s > 0 (total duration shrinks by (n-1)*crossfade_s),
-    plain concat otherwise.  B-frames are disabled to prevent hardware-decoder
-    co-location warnings (see -bf 0 comment below).
+    plain concat otherwise.  B-frames are disabled (-bf 0) to prevent hardware-decoder
+    co-located POC warnings: temporal direct prediction + b-pyramid create reference
+    chains that VA-API decoders cannot resolve; quality impact at CRF 18 is imperceptible.
     """
     n = len(kept)
     if n == 0:
@@ -225,10 +231,6 @@ def _cut_video_reencode(
     else:
         final_label = "v0"
 
-    # B-frames cause "co located POCs unavailable" on VA-API hardware decoders:
-    # temporal direct prediction + b-pyramid create reference chains that the
-    # parallel hardware decoder cannot resolve.  -bf 0 eliminates this entirely;
-    # quality impact at CRF 18 on presentation content is imperceptible.
     boundaries = _boundary_timestamps(kept, crossfade_s, fps) if n > 1 else []
     result = subprocess.run(
         [
@@ -259,10 +261,13 @@ def _cut_with_audio_processing(
     config: AutoCutConfig,
     resonant_freqs: list[float],
 ) -> None:
-    # crossfade_s is the visual fade duration (xfade -duration).
-    # The video offset per transition uses 2/fps extra slack for frame-boundary rounding,
-    # so the video shorten by (n-1)*(crossfade_s + 2/fps).  The audio must overlap by the
-    # same amount so both streams shrink identically and transitions stay in sync throughout.
+    """Re-encode kept segments with crossfade dissolve and optional room EQ.
+
+    crossfade_s is the visual fade duration passed to xfade.  The video offset per
+    transition includes 2/fps slack for frame-boundary rounding, so each transition
+    shortens the video by (crossfade_s + 2/fps).  The audio overlap is set to the same
+    value so both streams shrink identically and A/V transitions remain in sync.
+    """
     crossfade_s = _effective_crossfade_s(kept, config.crossfade_ms, media_info.fps)
     audio_overlap_s = crossfade_s + (2.0 / media_info.fps if crossfade_s > 0 else 0.0)
 
