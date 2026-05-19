@@ -24,7 +24,8 @@ AutoCut combines Voice Activity Detection (Silero VAD) with speech transcription
 ```bash
 git clone https://github.com/TriYop/AutoCut.git
 cd AutoCut
-uv sync          # or: pip install -e .
+uv sync                    # CLI only
+uv sync --extra gui        # CLI + graphical interface
 ```
 
 ## Quick Start
@@ -45,25 +46,62 @@ autocut seminar.mp4 --language fr --device cuda --verbose
 
 ---
 
+## GUI
+
+```bash
+autocut-gui
+```
+
+AutoCut ships a graphical interface for users who prefer not to use the command line.
+
+**Workflow:**
+
+1. Drop a video file onto the drop zone, or click **Browse** to select one.
+2. Adjust parameters across the four tabs (see below).
+3. Click **Run**. Progress is shown in the log area at the bottom.
+
+**Tabs:**
+
+| Tab | What you configure |
+|---|---|
+| **Output** | Output mode (EDL / video / both), output directory, cut padding, verbose logging |
+| **Whisper** | Model size, language, compute device, quantisation type |
+| **Detection** | Silence thresholds, speech padding, merge gap, filler words, repetition detection |
+| **Audio** | Crossfade at cut points, room EQ (gain, threshold, filter count, Q factor) |
+
+> The **CUDA** device option is automatically disabled when no compatible GPU is detected on the current system.
+
+---
+
 ## CLI Reference
 
 ```
 autocut [OPTIONS] INPUT_FILE
 ```
 
+### Whisper options
+
+| Option | Default | Description |
+|---|---|---|
+| `--model` | `small` | Model size: `tiny` / `base` / `small` / `medium` / `large-v3` |
+| `--language` | auto | Language code (e.g. `fr`, `en`). Omit to auto-detect. |
+| `--device` | `cpu` | Inference device: `cpu` or `cuda` |
+| `--compute-type` | `int8` | Quantisation: `int8` (fastest), `float16` (GPU), `float32` (full precision) |
+
 ### Detection options
 
 | Option | Default | Description |
 |---|---|---|
-| `--model` | `small` | Whisper model size: `tiny` / `base` / `small` / `medium` / `large-v3` |
-| `--language` | auto | Language code (e.g. `fr`, `en`). Omit to auto-detect. |
-| `--device` | `cpu` | Inference device: `cpu` or `cuda` |
 | `--min-silence-ms` | `700` | Minimum silence duration to flag (ms) |
+| `--speech-pad-ms` | `150` | Silence padding added around detected speech to avoid clipping (ms) |
 | `--max-silence-s` | `30` | Silences longer than this are kept (Q&A breaks, applause…) |
 | `--no-silence-cap` | off | Remove the max-silence guard — cut every silence (good for YT replays) |
-| `--fillers` | built-in | Comma-separated filler word list override (default: `euh,hm,hmm,donc,ben,beh,voilà,eh`) |
-| `--no-repetitions` | off | Disable word-repetition detection |
 | `--merge-gap` | `0.2` | Merge bad segments closer than this many seconds |
+| `--fillers` | built-in | Comma-separated filler word list override (default: `euh,hm,hmm,donc,ben,beh,voilà,eh`) |
+| `--min-filler-duration` | `0.3` | Minimum filler word duration to flag (s). Shorter utterances are ignored. |
+| `--no-repetitions` | off | Disable word-repetition detection |
+| `--repetition-window` | `3` | Number of consecutive words checked for repetitions |
+| `--repetition-min-length` | `2` | Minimum word length considered for repetition detection |
 
 ### Output options
 
@@ -71,6 +109,8 @@ autocut [OPTIONS] INPUT_FILE
 |---|---|---|
 | `--output` / `-o` | `edl` | Output mode: `edl`, `video`, or `both` |
 | `--output-dir` | input directory | Directory for output files |
+| `--padding-before` | `0.05` | Seconds of speech to keep before each cut |
+| `--padding-after` | `0.05` | Seconds of speech to keep after each cut |
 
 ### Audio quality options
 
@@ -79,6 +119,9 @@ autocut [OPTIONS] INPUT_FILE
 | `--crossfade-ms` | `0` | Fade-out/in at each cut point (ms). `0` = disabled. ~120 ms recommended |
 | `--room-eq` | off | Detect and attenuate room resonance frequencies from silence segments |
 | `--room-eq-gain` | `-10.0` | Attenuation applied to each detected resonance (dB, negative = cut) |
+| `--room-eq-threshold` | `10.0` | Minimum peak height above noise floor to flag a resonance (dB) |
+| `--room-eq-filters` | `5` | Maximum number of notch filters applied |
+| `--room-eq-q` | `8.0` | Q factor for notch filters (higher = narrower notch) |
 
 ### Misc
 
@@ -152,7 +195,7 @@ Audio extraction (FFmpeg → mono 16 kHz WAV)
 
 ## Configuration
 
-All detection parameters live in `AutoCutConfig` (`src/autocut/config.py`). The CLI exposes the most useful ones; the remainder can be set programmatically:
+All detection parameters live in `AutoCutConfig` (`src/autocut/config.py`). Every field is accessible via CLI flags; they can also be set programmatically:
 
 ```python
 from autocut.config import AutoCutConfig
