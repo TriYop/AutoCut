@@ -88,8 +88,11 @@ def load(
     if data.get("config_hash") != _config_hash(config):
         return None
 
-    vad = [_dict_to_seg(d) for d in data.get("vad_segments", [])]
-    whisper = [_dict_to_seg(d) for d in data.get("whisper_segments", [])]
+    try:
+        vad = [_dict_to_seg(d) for d in data.get("vad_segments", [])]
+        whisper = [_dict_to_seg(d) for d in data.get("whisper_segments", [])]
+    except (KeyError, ValueError):
+        return None
     return vad, whisper
 
 
