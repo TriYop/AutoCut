@@ -4,6 +4,7 @@ import sys
 
 
 def main() -> None:
+    """Entry point for the autocut-gui console script; exits non-zero on failure."""
     try:
         from PySide6.QtWidgets import QApplication  # noqa: F401
     except ImportError:

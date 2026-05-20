@@ -1,3 +1,6 @@
+"""Custom exceptions raised by the AutoCut pipeline, each carrying a process exit code."""
+
+
 class AutoCutError(Exception):
     """Base exception for all AutoCut errors; carries a process exit code."""
 

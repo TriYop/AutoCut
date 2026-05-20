@@ -14,14 +14,17 @@ from autocut.pipeline import cache as pipeline_cache
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _bad(start: float, end: float, source: SegmentSource = SegmentSource.VAD) -> BadSegment:
+    """Return a VAD-sourced silence BadSegment spanning [start, end)."""
     return BadSegment(Segment(start, end), source, "silence")
 
 
 def _whisper_bad(start: float, end: float) -> BadSegment:
+    """Return a WHISPER_FILLER BadSegment with confidence 0.9."""
     return BadSegment(Segment(start, end), SegmentSource.WHISPER_FILLER, "euh", confidence=0.9)
 
 
 def _rep_bad(start: float, end: float) -> BadSegment:
+    """Return a WHISPER_REPETITION BadSegment."""
     return BadSegment(Segment(start, end), SegmentSource.WHISPER_REPETITION, "repetition:donc")
 
 
@@ -31,18 +34,35 @@ CFG = AutoCutConfig()
 # ── cache_path ────────────────────────────────────────────────────────────────
 
 def test_cache_path_suffix(tmp_path):
+    """The sidecar path appends .autocut-cache.json to the full filename."""
     p = tmp_path / "video.mp4"
     assert pipeline_cache.cache_path(p) == tmp_path / "video.mp4.autocut-cache.json"
 
 
 def test_cache_path_preserves_original_suffix(tmp_path):
+    """The original file extension is preserved in the sidecar filename."""
     p = tmp_path / "clip.mov"
     assert pipeline_cache.cache_path(p).name == "clip.mov.autocut-cache.json"
+
+
+def test_cache_path_file_without_extension(tmp_path):
+    """Files without an extension still get a well-formed sidecar path."""
+    p = tmp_path / "Makefile"
+    result = pipeline_cache.cache_path(p)
+    assert result.name == "Makefile.autocut-cache.json"
+
+
+def test_cache_path_double_extension(tmp_path):
+    """Files with compound extensions (e.g. .tar.gz) preserve all parts in the sidecar name."""
+    p = tmp_path / "video.tar.gz"
+    result = pipeline_cache.cache_path(p)
+    assert result.name == "video.tar.gz.autocut-cache.json"
 
 
 # ── round-trip ────────────────────────────────────────────────────────────────
 
 def test_save_and_load_round_trip(tmp_path):
+    """Segments saved with save() are returned unchanged by load()."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     vad = [_bad(1.0, 2.0), _bad(5.0, 6.0)]
@@ -62,6 +82,7 @@ def test_save_and_load_round_trip(tmp_path):
 
 
 def test_save_preserves_confidence(tmp_path):
+    """The confidence value on whisper segments survives a save/load round-trip."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     whisper = [_whisper_bad(1.0, 1.5)]
@@ -73,6 +94,7 @@ def test_save_preserves_confidence(tmp_path):
 
 
 def test_save_empty_segments(tmp_path):
+    """Saving and loading with no segments returns ([], [])."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [], [], CFG)
@@ -83,12 +105,14 @@ def test_save_empty_segments(tmp_path):
 # ── invalidation ─────────────────────────────────────────────────────────────
 
 def test_load_returns_none_when_no_cache(tmp_path):
+    """load() returns None when no sidecar cache file exists."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     assert pipeline_cache.load(video, CFG) is None
 
 
 def test_load_returns_none_after_file_content_change(tmp_path):
+    """load() returns None after the input file size changes (fingerprint mismatch)."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"version1")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -98,6 +122,7 @@ def test_load_returns_none_after_file_content_change(tmp_path):
 
 
 def test_load_returns_none_after_mtime_change(tmp_path):
+    """load() returns None after the input file mtime changes (fingerprint mismatch)."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -109,6 +134,7 @@ def test_load_returns_none_after_mtime_change(tmp_path):
 
 
 def test_load_returns_none_when_config_changes(tmp_path):
+    """load() returns None when a detection-relevant config field differs from the saved hash."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -118,6 +144,7 @@ def test_load_returns_none_when_config_changes(tmp_path):
 
 
 def test_load_returns_none_on_corrupt_json(tmp_path):
+    """load() returns None when the cache file is not valid JSON."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.cache_path(video).write_text("not json", encoding="utf-8")
@@ -125,6 +152,7 @@ def test_load_returns_none_on_corrupt_json(tmp_path):
 
 
 def test_load_returns_none_on_wrong_format_version(tmp_path):
+    """load() returns None when format_version in the cache does not match the current value."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [], [], CFG)
@@ -138,6 +166,7 @@ def test_load_returns_none_on_wrong_format_version(tmp_path):
 
 
 def test_save_silently_ignores_write_error(tmp_path):
+    """save() must not raise when the cache directory is not writable."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     read_only_dir = tmp_path / "ro"
@@ -167,6 +196,7 @@ def test_save_silently_ignores_write_error(tmp_path):
     ("repetition_min_word_length", 3),
 ])
 def test_config_change_invalidates_cache(tmp_path, field, value):
+    """Changing any detection-relevant config field produces a different hash → cache miss."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -185,6 +215,7 @@ def test_progress_callback_called_during_reencode():
     progress_calls: list[tuple[float, float]] = []
 
     def _cb(current_s: float, total_s: float) -> None:
+        """Collect (current_s, total_s) tuples for assertion."""
         progress_calls.append((current_s, total_s))
 
     proc = MagicMock()
@@ -219,7 +250,7 @@ def test_progress_callback_not_required():
 # ── cache JSON robustness ─────────────────────────────────────────────────────
 
 def test_load_missing_vad_segments_key_returns_empty(tmp_path):
-    """Cache with no 'vad_segments' key returns ([], whisper)."""
+    """A cache file without 'vad_segments' key is treated as having no VAD segments."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [], [], CFG)
@@ -234,7 +265,7 @@ def test_load_missing_vad_segments_key_returns_empty(tmp_path):
 
 
 def test_load_missing_whisper_segments_key_returns_empty(tmp_path):
-    """Cache with no 'whisper_segments' key returns (vad, [])."""
+    """A cache file without 'whisper_segments' key is treated as having no Whisper segments."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -252,7 +283,7 @@ def test_load_missing_whisper_segments_key_returns_empty(tmp_path):
 
 
 def test_load_missing_fingerprint_key_returns_none(tmp_path):
-    """Cache without 'fingerprint' key cannot match → returns None."""
+    """A cache file without 'fingerprint' cannot match and returns None."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [], [], CFG)
@@ -266,7 +297,7 @@ def test_load_missing_fingerprint_key_returns_none(tmp_path):
 
 
 def test_load_invalid_segment_source_returns_none(tmp_path):
-    """Cache containing an unknown SegmentSource value must return None, not crash."""
+    """A cache containing an unknown SegmentSource value returns None instead of crashing."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -280,7 +311,7 @@ def test_load_invalid_segment_source_returns_none(tmp_path):
 
 
 def test_load_segment_missing_required_key_returns_none(tmp_path):
-    """Cache with a segment dict missing 'start' must return None, not crash."""
+    """A cache with a segment dict missing a required key returns None instead of crashing."""
     video = tmp_path / "video.mp4"
     video.write_bytes(b"fake")
     pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
@@ -291,19 +322,3 @@ def test_load_segment_missing_required_key_returns_none(tmp_path):
     cf.write_text(json.dumps(data), encoding="utf-8")
 
     assert pipeline_cache.load(video, CFG) is None
-
-
-# ── cache_path edge cases ─────────────────────────────────────────────────────
-
-def test_cache_path_file_without_extension(tmp_path):
-    """Files without an extension still get a sidecar path."""
-    p = tmp_path / "Makefile"
-    result = pipeline_cache.cache_path(p)
-    assert result.name == "Makefile.autocut-cache.json"
-
-
-def test_cache_path_double_extension(tmp_path):
-    """Files like 'video.mkv' preserve both extension parts in sidecar name."""
-    p = tmp_path / "video.tar.gz"
-    result = pipeline_cache.cache_path(p)
-    assert result.name == "video.tar.gz.autocut-cache.json"
