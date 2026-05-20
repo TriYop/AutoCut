@@ -59,7 +59,8 @@ def analyze_room_resonances(
     threshold = noise_floor + config.room_eq_threshold_db
 
     # Simple local-maximum peak finder
-    min_gap = max(1, int(40 / (sr / n_fft)))  # ~40 Hz minimum between peaks
+    # ~40 Hz minimum gap between peaks in bin units
+    min_gap = max(1, int(40 / (sr / n_fft)))
     peaks: list[tuple[int, float]] = []
     for i in range(1, len(spec_db) - 1):
         if spec_db[i] < threshold:

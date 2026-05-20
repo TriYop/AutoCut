@@ -68,7 +68,8 @@ def detect_fillers_and_repetitions(
         return fillers, []
 
     # Pass 2 — repetitions (sliding window)
-    window: deque[tuple[str, int]] = deque()  # (normalized_word, index)
+    # (normalized_word, word-index-in-words-list)
+    window: deque[tuple[str, int]] = deque()
 
     for i, word in enumerate(words):
         normalized = _normalize(word.word)

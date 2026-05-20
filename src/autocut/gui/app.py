@@ -6,6 +6,7 @@ from autocut.gui.widgets.main_window import AutoCutMainWindow
 
 
 def build_app(argv: list[str]) -> tuple[QApplication, AutoCutMainWindow]:
+    """Create and configure the QApplication and main window, returning both."""
     app = QApplication(argv)
     app.setApplicationName("AutoCut")
     app.setApplicationVersion("0.1.0")
