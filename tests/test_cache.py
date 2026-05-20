@@ -214,3 +214,96 @@ def test_progress_callback_not_required():
 
     with patch("autocut.output.cutter.subprocess.Popen", return_value=proc):
         _cut_video_reencode(Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"), 0.0, 25.0, None)
+
+
+# ── cache JSON robustness ─────────────────────────────────────────────────────
+
+def test_load_missing_vad_segments_key_returns_empty(tmp_path):
+    """Cache with no 'vad_segments' key returns ([], whisper)."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    pipeline_cache.save(video, [], [], CFG)
+
+    cf = pipeline_cache.cache_path(video)
+    data = json.loads(cf.read_text())
+    del data["vad_segments"]
+    cf.write_text(json.dumps(data), encoding="utf-8")
+
+    result = pipeline_cache.load(video, CFG)
+    assert result == ([], [])
+
+
+def test_load_missing_whisper_segments_key_returns_empty(tmp_path):
+    """Cache with no 'whisper_segments' key returns (vad, [])."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
+
+    cf = pipeline_cache.cache_path(video)
+    data = json.loads(cf.read_text())
+    del data["whisper_segments"]
+    cf.write_text(json.dumps(data), encoding="utf-8")
+
+    result = pipeline_cache.load(video, CFG)
+    assert result is not None
+    vad, whisper = result
+    assert len(vad) == 1
+    assert whisper == []
+
+
+def test_load_missing_fingerprint_key_returns_none(tmp_path):
+    """Cache without 'fingerprint' key cannot match → returns None."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    pipeline_cache.save(video, [], [], CFG)
+
+    cf = pipeline_cache.cache_path(video)
+    data = json.loads(cf.read_text())
+    del data["fingerprint"]
+    cf.write_text(json.dumps(data), encoding="utf-8")
+
+    assert pipeline_cache.load(video, CFG) is None
+
+
+def test_load_invalid_segment_source_returns_none(tmp_path):
+    """Cache containing an unknown SegmentSource value must return None, not crash."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
+
+    cf = pipeline_cache.cache_path(video)
+    data = json.loads(cf.read_text())
+    data["vad_segments"][0]["source"] = "unknown_source_value"
+    cf.write_text(json.dumps(data), encoding="utf-8")
+
+    assert pipeline_cache.load(video, CFG) is None
+
+
+def test_load_segment_missing_required_key_returns_none(tmp_path):
+    """Cache with a segment dict missing 'start' must return None, not crash."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    pipeline_cache.save(video, [_bad(1.0, 2.0)], [], CFG)
+
+    cf = pipeline_cache.cache_path(video)
+    data = json.loads(cf.read_text())
+    del data["vad_segments"][0]["start"]
+    cf.write_text(json.dumps(data), encoding="utf-8")
+
+    assert pipeline_cache.load(video, CFG) is None
+
+
+# ── cache_path edge cases ─────────────────────────────────────────────────────
+
+def test_cache_path_file_without_extension(tmp_path):
+    """Files without an extension still get a sidecar path."""
+    p = tmp_path / "Makefile"
+    result = pipeline_cache.cache_path(p)
+    assert result.name == "Makefile.autocut-cache.json"
+
+
+def test_cache_path_double_extension(tmp_path):
+    """Files like 'video.mkv' preserve both extension parts in sidecar name."""
+    p = tmp_path / "video.tar.gz"
+    result = pipeline_cache.cache_path(p)
+    assert result.name == "video.tar.gz.autocut-cache.json"

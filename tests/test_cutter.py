@@ -1,5 +1,6 @@
 """Tests for autocut.output.cutter — pure functions and subprocess error handling."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -335,3 +336,182 @@ def test_cut_video_raises_when_all_segments_cut(tmp_path):
     bad = [_bad(0.0, 10.0)]
     with pytest.raises(ValueError, match="No segments left"):
         cut_video(tmp_path / "in.mp4", bad, _media(10.0), tmp_path / "out.mp4", AutoCutConfig())
+
+
+# ── _compute_kept_segments additional edge cases ──────────────────────────────
+
+def test_kept_bad_covers_full_duration():
+    # One bad that exactly spans the whole video → nothing left → empty after filter
+    assert _compute_kept_segments([_bad(0.0, 10.0)], 10.0) == []
+
+
+def test_kept_bad_end_beyond_duration():
+    # Bad segment extends past the video end: prev_end > duration_s → no trailing kept
+    kept = _compute_kept_segments([_bad(8.0, 15.0)], 10.0)
+    assert kept == [Segment(0.0, 8.0)]
+
+
+def test_kept_zero_duration_video():
+    # Empty video produces no kept segments (0-length segment filtered at ≤ 0.01)
+    assert _compute_kept_segments([], 0.0) == []
+
+
+def test_kept_segment_exactly_10ms_excluded():
+    # Filter is duration > 0.01; exactly 0.01 s does not pass
+    kept = _compute_kept_segments([_bad(0.0, 9.99)], 10.0)
+    assert kept == []
+
+
+def test_kept_segment_just_above_10ms_included():
+    # 10.0 - 9.989 = 0.011 > 0.01 → kept
+    kept = _compute_kept_segments([_bad(0.0, 9.989)], 10.0)
+    assert len(kept) == 1
+    assert kept[0].duration == pytest.approx(0.011)
+
+
+def test_kept_segment_just_below_10ms_dropped():
+    # 10.0 - 9.995 = 0.005 < 0.01 → dropped
+    assert _compute_kept_segments([_bad(0.0, 9.995)], 10.0) == []
+
+
+def test_kept_two_bads_covering_whole_duration():
+    bad = [_bad(0.0, 5.0), _bad(5.0, 10.0)]
+    assert _compute_kept_segments(bad, 10.0) == []
+
+
+# ── _apply_crossfade additional edge cases ────────────────────────────────────
+
+def test_apply_crossfade_fade_n_zero_treated_as_plain_concat():
+    # At sr=10, crossfade_s=0.001 → int(0.01) = 0 → must not crash, treated as no crossfade
+    audio = np.ones(20, dtype=np.float32)
+    kept = [Segment(0.0, 1.0), Segment(1.0, 2.0)]
+    result = _apply_crossfade(audio, 10, kept, 0.001)
+    assert len(result) == 20
+    np.testing.assert_array_almost_equal(result, audio)
+
+
+def test_apply_crossfade_chunk_shorter_than_fade():
+    # next_chunk shorter than fade_n → fn = min(fade_n, ..., len(next_chunk))
+    sr = 1000
+    audio = np.concatenate([np.ones(500), np.ones(50)]).astype(np.float32)
+    kept = [Segment(0.0, 0.5), Segment(0.5, 0.55)]
+    # crossfade_s=0.2 → fade_n=200, but next_chunk has 50 samples → fn=50
+    result = _apply_crossfade(audio, sr, kept, 0.2)
+    # Should not raise; result length < 550
+    assert len(result) < 550
+
+
+def test_apply_crossfade_negative_crossfade_treated_as_zero():
+    audio = np.ones(1000, dtype=np.float32)
+    kept = [Segment(0.0, 0.5), Segment(0.5, 1.0)]
+    result = _apply_crossfade(audio, 1000, kept, -0.1)
+    assert len(result) == 1000
+
+
+# ── _xfade_filter_parts and _boundary_timestamps with 1 segment ──────────────
+
+def test_xfade_single_segment_produces_no_parts():
+    kept = [Segment(0.0, 5.0)]
+    parts, label = _xfade_filter_parts(kept, 0.1, FPS)
+    assert parts == []
+    assert label == "xf0"
+
+
+def test_boundary_timestamps_single_segment_returns_empty():
+    kept = [Segment(0.0, 5.0)]
+    assert _boundary_timestamps(kept, 0.1, FPS) == []
+
+
+# ── _cut_video_reencode additional paths ──────────────────────────────────────
+
+def test_cut_video_reencode_single_segment_no_crossfade():
+    """Single kept segment uses the v0 label path (no concat, no xfade)."""
+    from autocut.output.cutter import _cut_video_reencode
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = iter([])
+    proc.stderr.read.return_value = ""
+    proc.wait.return_value = None
+
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=proc) as mock_popen:
+        _cut_video_reencode(Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"), 0.0, FPS)
+
+    cmd = mock_popen.call_args[0][0]
+    # Single-segment path: filter_complex contains only the one trim chain for v0
+    fc_idx = cmd.index("-filter_complex")
+    fc = cmd[fc_idx + 1]
+    assert "[v0]" in fc
+    assert "concat" not in fc
+    assert "xfade" not in fc
+
+
+def test_cut_video_reencode_multi_segment_no_crossfade_uses_concat():
+    """Multiple segments without crossfade use the concat filter path."""
+    from autocut.output.cutter import _cut_video_reencode
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = iter([])
+    proc.stderr.read.return_value = ""
+    proc.wait.return_value = None
+
+    kept = [Segment(0.0, 3.0), Segment(5.0, 8.0)]
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=proc) as mock_popen:
+        _cut_video_reencode(Path("in.mp4"), kept, Path("out.mp4"), 0.0, FPS)
+
+    cmd = mock_popen.call_args[0][0]
+    fc_idx = cmd.index("-filter_complex")
+    fc = cmd[fc_idx + 1]
+    assert "concat" in fc
+    assert "xfade" not in fc
+
+
+def test_cut_video_reencode_progress_malformed_out_time_us_ignored():
+    """Malformed out_time_us value (e.g. 'N/A') must not crash the progress loop."""
+    from autocut.output.cutter import _cut_video_reencode
+
+    calls: list = []
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = iter(["out_time_us=N/A\n", "out_time_us=3000000\n"])
+    proc.stderr.read.return_value = ""
+    proc.wait.return_value = None
+
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=proc):
+        _cut_video_reencode(
+            Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"),
+            0.0, FPS, lambda c, t: calls.append(c),
+        )
+
+    # N/A line silently skipped; valid line fires callback
+    assert calls == [pytest.approx(3.0)]
+
+
+def test_cut_video_reencode_progress_zero_out_time():
+    """out_time_us=0 should fire the callback with current_s=0.0."""
+    from autocut.output.cutter import _cut_video_reencode
+
+    calls: list = []
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = iter(["out_time_us=0\n"])
+    proc.stderr.read.return_value = ""
+    proc.wait.return_value = None
+
+    with patch("autocut.output.cutter.subprocess.Popen", return_value=proc):
+        _cut_video_reencode(
+            Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"),
+            0.0, FPS, lambda c, t: calls.append(c),
+        )
+
+    assert calls == [pytest.approx(0.0)]
+
+
+# ── cut_video with no bad segments ────────────────────────────────────────────
+
+def test_cut_video_no_bad_segments_uses_stream_copy(tmp_path):
+    """No bad segments → full duration kept → stream-copy path."""
+    with patch.object(cutter_module, "_cut_stream_copy") as mock_copy, \
+         patch.object(cutter_module, "_cut_with_audio_processing") as mock_proc:
+        cut_video(tmp_path / "in.mp4", [], _media(10.0), tmp_path / "out.mp4", AutoCutConfig())
+    mock_copy.assert_called_once()
+    mock_proc.assert_not_called()

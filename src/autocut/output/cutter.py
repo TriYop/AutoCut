@@ -149,6 +149,10 @@ def _apply_crossfade(
         return np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
 
     fade_n = int(crossfade_s * sr)
+    # crossfade_s > 0 but rounds to 0 samples at low sample rates — treat as no crossfade
+    if fade_n == 0:
+        return np.concatenate(chunks)
+
     fade_out = np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
     fade_in  = np.linspace(0.0, 1.0, fade_n, dtype=np.float32)
 
