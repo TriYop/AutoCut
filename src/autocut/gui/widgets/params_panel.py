@@ -261,6 +261,8 @@ class ParamsPanel(QTabWidget):
         self.deeser_threshold.setDecimals(1)
         self.deeser_threshold.setSuffix(" dB")
         self.deeser_threshold.setValue(defaults.deeser_threshold_db)
+        self.deeser_threshold.setEnabled(defaults.deeser_enabled)
+        self.deeser_enabled.toggled.connect(self.deeser_threshold.setEnabled)
         form.addRow("Sibilant threshold:", self.deeser_threshold)
 
         # Click removal
@@ -274,6 +276,8 @@ class ParamsPanel(QTabWidget):
         self.click_threshold.setDecimals(1)
         self.click_threshold.setSuffix(" dB")
         self.click_threshold.setValue(defaults.click_threshold_db)
+        self.click_threshold.setEnabled(defaults.click_removal_enabled)
+        self.click_removal_enabled.toggled.connect(self.click_threshold.setEnabled)
         form.addRow("Click threshold:", self.click_threshold)
 
         return tab
