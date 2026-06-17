@@ -1,18 +1,18 @@
 """Tests for de-esser and click/plosive detection."""
 
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
-from pathlib import Path
-import tempfile
 import soundfile as sf
 
 from autocut.config import AutoCutConfig
-from autocut.models import BadSegment, Segment, SegmentSource
 from autocut.pipeline.audio_enhancement import (
-    detect_sibilants,
-    detect_clicks_and_plosives,
-    build_deeser_filter,
     build_click_removal_filter,
+    build_deeser_filter,
+    detect_clicks_and_plosives,
+    detect_sibilants,
 )
 
 
