@@ -1,13 +1,11 @@
 """Tests for autocut.output.edl — timecode conversion, EDL and JSON export."""
 
 import json
-from pathlib import Path
 
 import pytest
 
 from autocut.models import BadSegment, MediaInfo, Segment, SegmentSource
 from autocut.output.edl import _seconds_to_timecode, write_edl, write_json
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

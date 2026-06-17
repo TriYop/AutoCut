@@ -8,6 +8,7 @@ import pytest
 
 from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, MediaInfo, Segment, SegmentSource
+from autocut.output import cutter as cutter_module
 from autocut.output.cutter import (
     _apply_crossfade,
     _boundary_timestamps,
@@ -17,8 +18,6 @@ from autocut.output.cutter import (
     _xfade_filter_parts,
     cut_video,
 )
-from autocut.output import cutter as cutter_module
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -404,8 +403,9 @@ def _mock_popen(returncode: int, stderr_text: str) -> MagicMock:
 def test_cut_video_reencode_raises_on_ffmpeg_failure():
     """A non-zero FFmpeg exit code raises RuntimeError mentioning 'FFmpeg re-encode failed'."""
     with patch("autocut.output.cutter.subprocess.Popen", return_value=_mock_popen(1, "some ffmpeg error")):
-        from autocut.output.cutter import _cut_video_reencode
         from pathlib import Path
+
+        from autocut.output.cutter import _cut_video_reencode
         with pytest.raises(RuntimeError, match="FFmpeg re-encode failed"):
             _cut_video_reencode(Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"), 0.0, FPS)
 
@@ -413,8 +413,9 @@ def test_cut_video_reencode_raises_on_ffmpeg_failure():
 def test_cut_video_reencode_error_includes_stderr():
     """The RuntimeError message includes the raw FFmpeg stderr text."""
     with patch("autocut.output.cutter.subprocess.Popen", return_value=_mock_popen(234, "rate of 1/0 is invalid")):
-        from autocut.output.cutter import _cut_video_reencode
         from pathlib import Path
+
+        from autocut.output.cutter import _cut_video_reencode
         with pytest.raises(RuntimeError, match="rate of 1/0 is invalid"):
             _cut_video_reencode(Path("in.mp4"), [Segment(0.0, 5.0)], Path("out.mp4"), 0.0, FPS)
 

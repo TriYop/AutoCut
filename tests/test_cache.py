@@ -10,7 +10,6 @@ from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, Segment, SegmentSource
 from autocut.pipeline import cache as pipeline_cache
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _bad(start: float, end: float, source: SegmentSource = SegmentSource.VAD) -> BadSegment:
@@ -210,6 +209,7 @@ def test_config_change_invalidates_cache(tmp_path, field, value):
 def test_progress_callback_called_during_reencode():
     """Verify cut_video forwards progress_cb into _cut_video_reencode."""
     from unittest.mock import MagicMock, patch
+
     from autocut.output.cutter import _cut_video_reencode
 
     progress_calls: list[tuple[float, float]] = []
@@ -235,6 +235,7 @@ def test_progress_callback_called_during_reencode():
 def test_progress_callback_not_required():
     """_cut_video_reencode must not crash when progress_cb is None."""
     from unittest.mock import MagicMock, patch
+
     from autocut.output.cutter import _cut_video_reencode
 
     proc = MagicMock()

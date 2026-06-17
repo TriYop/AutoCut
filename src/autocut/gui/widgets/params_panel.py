@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -251,6 +250,36 @@ class ParamsPanel(QTabWidget):
         self.room_eq.toggled.connect(self.room_eq_filters.setEnabled)
         self.room_eq.toggled.connect(self.room_eq_q.setEnabled)
 
+        # De-esser
+        self.deeser_enabled = QCheckBox("De-esser (sibilant reduction)")
+        self.deeser_enabled.setChecked(defaults.deeser_enabled)
+        form.addRow("", self.deeser_enabled)
+
+        self.deeser_threshold = QDoubleSpinBox()
+        self.deeser_threshold.setRange(0.0, 20.0)
+        self.deeser_threshold.setSingleStep(0.5)
+        self.deeser_threshold.setDecimals(1)
+        self.deeser_threshold.setSuffix(" dB")
+        self.deeser_threshold.setValue(defaults.deeser_threshold_db)
+        self.deeser_threshold.setEnabled(defaults.deeser_enabled)
+        self.deeser_enabled.toggled.connect(self.deeser_threshold.setEnabled)
+        form.addRow("Sibilant threshold:", self.deeser_threshold)
+
+        # Click removal
+        self.click_removal_enabled = QCheckBox("Click/plosive removal")
+        self.click_removal_enabled.setChecked(defaults.click_removal_enabled)
+        form.addRow("", self.click_removal_enabled)
+
+        self.click_threshold = QDoubleSpinBox()
+        self.click_threshold.setRange(0.0, 20.0)
+        self.click_threshold.setSingleStep(0.5)
+        self.click_threshold.setDecimals(1)
+        self.click_threshold.setSuffix(" dB")
+        self.click_threshold.setValue(defaults.click_threshold_db)
+        self.click_threshold.setEnabled(defaults.click_removal_enabled)
+        self.click_removal_enabled.toggled.connect(self.click_threshold.setEnabled)
+        form.addRow("Click threshold:", self.click_threshold)
+
         return tab
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -281,6 +310,10 @@ class ParamsPanel(QTabWidget):
             room_eq_threshold_db=self.room_eq_threshold.value(),
             room_eq_max_filters=self.room_eq_filters.value(),
             room_eq_q_factor=self.room_eq_q.value(),
+            deeser_enabled=self.deeser_enabled.isChecked(),
+            deeser_threshold_db=self.deeser_threshold.value(),
+            click_removal_enabled=self.click_removal_enabled.isChecked(),
+            click_threshold_db=self.click_threshold.value(),
         )
 
     @property

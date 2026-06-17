@@ -10,6 +10,10 @@ from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, MediaInfo
 from autocut.pipeline import cache as pipeline_cache
 from autocut.pipeline.audio import extract_audio
+from autocut.pipeline.audio_enhancement import (
+    detect_clicks_and_plosives,
+    detect_sibilants,
+)
 from autocut.pipeline.merger import merge_bad_segments
 from autocut.pipeline.room_eq import analyze_room_resonances
 from autocut.pipeline.transcriber import detect_fillers_and_repetitions
@@ -24,6 +28,8 @@ class PipelineResult:
     media_info: MediaInfo
     bad_segments: list[BadSegment]
     resonant_freqs: list[float] = field(default_factory=list)
+    sibilant_freqs: list[float] = field(default_factory=list)
+    click_freqs: list[float] = field(default_factory=list)
 
 
 def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineResult:
@@ -81,6 +87,28 @@ def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineRe
                 total=1,
             )
 
+        sibilant_freqs: list[float] = []
+        click_freqs: list[float] = []
+        if config.deeser_enabled or config.click_removal_enabled:
+            if config.deeser_enabled:
+                t5 = progress.add_task("Analysing sibilants…", total=None)
+                sibilant_freqs = detect_sibilants(audio_path, config)
+                progress.update(
+                    t5,
+                    description=f"[green]De-esser: {len(sibilant_freqs)} sibilant(s) identified",
+                    completed=1,
+                    total=1,
+                )
+            if config.click_removal_enabled:
+                t6 = progress.add_task("Detecting clicks/plosives…", total=None)
+                click_freqs = detect_clicks_and_plosives(audio_path, config)
+                progress.update(
+                    t6,
+                    description=f"[green]Click removal: {len(click_freqs)} transient(s) identified",
+                    completed=1,
+                    total=1,
+                )
+
         audio_path.unlink(missing_ok=True)
 
         all_bad = silence_segs + filler_segs + repetition_segs
@@ -91,4 +119,6 @@ def run(input_path: Path, config: AutoCutConfig, console: Console) -> PipelineRe
         media_info=media_info,
         bad_segments=merged,
         resonant_freqs=resonant_freqs,
+        sibilant_freqs=sibilant_freqs,
+        click_freqs=click_freqs,
     )
