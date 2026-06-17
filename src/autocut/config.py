@@ -50,6 +50,16 @@ class AutoCutConfig:
     # Attenuation in dB — negative value cuts the resonance
     room_eq_gain_db: float = -10.0
 
+    # De-esser: reduce harsh sibilants (s, sh, ch)
+    deeser_enabled: bool = True
+    # Minimum peak height above noise floor to flag a sibilant (dB)
+    deeser_threshold_db: float = 8.0
+
+    # Click/plosive removal: suppress transient artifacts and harsh plosives
+    click_removal_enabled: bool = True
+    # Minimum transient peak above noise floor to flag (dB)
+    click_threshold_db: float = 12.0
+
     # Crossfade at cut points
     # 0 = disabled; ~120 ms recommended for smooth transitions
     crossfade_ms: int = 0
