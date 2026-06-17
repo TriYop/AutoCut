@@ -1,5 +1,7 @@
 # AutoCut
 
+![AutoCut](./autocut.logo.png)
+
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=coverage)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=TriYop_AutoCut&metric=bugs)](https://sonarcloud.io/summary/new_code?id=TriYop_AutoCut)

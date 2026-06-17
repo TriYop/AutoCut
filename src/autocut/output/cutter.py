@@ -367,7 +367,8 @@ def _cut_with_audio_processing(
     room_eq_filter = build_ffmpeg_eq_filter(resonant_freqs, config)
     if room_eq_filter:
         if audio_chain:
-            audio_chain += f",{room_eq_filter}"
+            separator = ";" if ";" in audio_chain else ","
+            audio_chain += f"{separator}{room_eq_filter}"
         else:
             audio_chain = room_eq_filter
 
@@ -376,7 +377,7 @@ def _cut_with_audio_processing(
 
     # Ensure formatting is always applied
     if audio_chain:
-        audio_filter_chain = f"aformat=sample_rates=44100;{audio_chain}"
+        audio_filter_chain = f"aformat=sample_rates=44100,{audio_chain}"
     else:
         audio_filter_chain = "aformat=sample_rates=44100"
 
