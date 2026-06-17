@@ -367,7 +367,7 @@ def _cut_with_audio_processing(
     room_eq_filter = build_ffmpeg_eq_filter(resonant_freqs, config)
     if room_eq_filter:
         if audio_chain:
-            audio_chain += f";{room_eq_filter}"
+            audio_chain += f",{room_eq_filter}"
         else:
             audio_chain = room_eq_filter
 
