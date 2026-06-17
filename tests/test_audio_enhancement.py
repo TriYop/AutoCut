@@ -104,3 +104,25 @@ def test_empty_filter_when_no_peaks(config):
     """build_deeser_filter returns None when no frequencies detected."""
     assert build_deeser_filter([], config) is None
     assert build_click_removal_filter([], config) is None
+
+
+def test_end_to_end_enhancement(sample_wav, config):
+    """Integration: detect sibilants and clicks, generate filters, verify non-empty."""
+    sibilants = detect_sibilants(sample_wav, config)
+    clicks = detect_clicks_and_plosives(sample_wav, config)
+
+    sib_filter = build_deeser_filter(sibilants, config)
+    click_filter = build_click_removal_filter(clicks, config)
+
+    # At least one detection should succeed on synthetic audio
+    assert (len(sibilants) > 0 or len(clicks) > 0), "Should detect at least one enhancement target"
+
+    # Both filters should be non-empty strings if inputs detected
+    if sibilants:
+        assert sib_filter is not None
+        assert isinstance(sib_filter, str)
+        assert "sidechaincompress" in sib_filter
+    if clicks:
+        assert click_filter is not None
+        assert isinstance(click_filter, str)
+        assert "compand" in click_filter
