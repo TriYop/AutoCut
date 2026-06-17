@@ -78,6 +78,34 @@ console = Console()
               help="Maximum number of notch filters applied by room EQ.")
 @click.option("--room-eq-q", default=8.0, show_default=True, type=float,
               help="Q factor for room EQ notch filters (higher = narrower notch).")
+@click.option(
+    "--deeser", "deeser_enabled",
+    is_flag=True, default=True, show_default=True,
+    help="Enable de-esser for harsh sibilants (enabled by default)."
+)
+@click.option(
+    "--no-deeser",
+    is_flag=True,
+    help="Disable de-esser."
+)
+@click.option(
+    "--deeser-threshold", default=8.0, show_default=True, type=float,
+    help="Sibilant detection threshold (dB above noise floor)."
+)
+@click.option(
+    "--click-removal", "click_removal_enabled",
+    is_flag=True, default=True, show_default=True,
+    help="Enable click/plosive removal (enabled by default)."
+)
+@click.option(
+    "--no-click-removal",
+    is_flag=True,
+    help="Disable click/plosive removal."
+)
+@click.option(
+    "--click-threshold", default=12.0, show_default=True, type=float,
+    help="Click/plosive detection threshold (dB above noise floor)."
+)
 @click.option("--no-cache", is_flag=True, default=False,
               help="Force re-analysis even if a fresh cache exists.")
 @click.option("--verbose", "-v", is_flag=True)
@@ -107,10 +135,21 @@ def cli(
     room_eq_threshold: float,
     room_eq_filters: int,
     room_eq_q: float,
+    deeser_enabled: bool,
+    no_deeser: bool,
+    deeser_threshold: float,
+    click_removal_enabled: bool,
+    no_click_removal: bool,
+    click_threshold: float,
     no_cache: bool,
     verbose: bool,
 ) -> None:
     """Detect hesitations and stutters in a webinar video and export cut regions."""
+    if no_deeser:
+        deeser_enabled = False
+    if no_click_removal:
+        click_removal_enabled = False
+
     config = AutoCutConfig(
         whisper_model=model,
         whisper_language=language,
@@ -133,6 +172,10 @@ def cli(
         room_eq_threshold_db=room_eq_threshold,
         room_eq_max_filters=room_eq_filters,
         room_eq_q_factor=room_eq_q,
+        deeser_enabled=deeser_enabled,
+        deeser_threshold_db=deeser_threshold,
+        click_removal_enabled=click_removal_enabled,
+        click_threshold_db=click_threshold,
         use_cache=not no_cache,
     )
 
@@ -216,4 +259,6 @@ def _encode_with_progress(
             config,
             result.resonant_freqs,
             progress_cb=_on_progress,
+            sibilant_freqs=result.sibilant_freqs,
+            click_freqs=result.click_freqs,
         )
