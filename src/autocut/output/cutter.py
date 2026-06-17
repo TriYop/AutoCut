@@ -12,6 +12,10 @@ import soundfile as sf
 
 from autocut.config import AutoCutConfig
 from autocut.models import BadSegment, MediaInfo, Segment
+from autocut.pipeline.audio_enhancement import (
+    build_click_removal_filter,
+    build_deeser_filter,
+)
 from autocut.pipeline.room_eq import build_ffmpeg_eq_filter
 
 
@@ -42,12 +46,18 @@ def cut_video(
     config: AutoCutConfig,
     resonant_freqs: list[float] | None = None,
     progress_cb: Callable[[float, float], None] | None = None,
+    sibilant_freqs: list[float] | None = None,
+    click_freqs: list[float] | None = None,
 ) -> None:
     """Write a new video with bad_segments removed, choosing the fastest safe path.
 
     progress_cb(current_s, total_s) is called during re-encode when the audio-processing
     path is active; it is never called on the stream-copy path (near-instant).
     """
+    if sibilant_freqs is None:
+        sibilant_freqs = []
+    if click_freqs is None:
+        click_freqs = []
     kept = _compute_kept_segments(bad_segments, media_info.duration_s)
 
     if not kept:
@@ -55,12 +65,13 @@ def cut_video(
 
     needs_audio_processing = config.crossfade_ms > 0 or (
         config.room_eq_enabled and resonant_freqs
-    )
+    ) or sibilant_freqs or click_freqs
 
     if needs_audio_processing:
         _cut_with_audio_processing(
             input_path, kept, media_info, output_path, config,
             resonant_freqs or [], progress_cb,
+            sibilant_freqs, click_freqs,
         )
     else:
         _cut_stream_copy(input_path, kept, output_path)
@@ -306,6 +317,8 @@ def _cut_with_audio_processing(
     config: AutoCutConfig,
     resonant_freqs: list[float],
     progress_cb: Callable[[float, float], None] | None = None,
+    sibilant_freqs: list[float] | None = None,
+    click_freqs: list[float] | None = None,
 ) -> None:
     """Re-encode kept segments with crossfade dissolve and optional room EQ.
 
@@ -314,6 +327,10 @@ def _cut_with_audio_processing(
     shortens the video by (crossfade_s + 2/fps).  The audio overlap is set to the same
     value so both streams shrink identically and A/V transitions remain in sync.
     """
+    if sibilant_freqs is None:
+        sibilant_freqs = []
+    if click_freqs is None:
+        click_freqs = []
     crossfade_s = _effective_crossfade_s(kept, config.crossfade_ms, media_info.fps)
     audio_overlap_s = crossfade_s + (2.0 / media_info.fps if crossfade_s > 0 else 0.0)
 
@@ -324,21 +341,64 @@ def _cut_with_audio_processing(
         audio_tmp = Path(f.name)
     sf.write(str(audio_tmp), processed, native_sr, subtype="FLOAT")
 
-    eq_filter = build_ffmpeg_eq_filter(resonant_freqs, config) if (config.room_eq_enabled and resonant_freqs) else None
+    # Build audio filter chain with all enhancements
+    # Note: de-esser uses split graph (sidechain), so it must come first
+    audio_chain = ""
 
-    if eq_filter:
+    # De-esser with sidechain (uses split, so must be first in chain)
+    deeser_filter = build_deeser_filter(sibilant_freqs, config)
+
+    # Click removal (compand doesn't split, can be in sequence)
+    click_filter = build_click_removal_filter(click_freqs, config)
+
+    # Build the filter graph
+    if deeser_filter:
+        # Sidechain de-esser outputs main stream (after split)
+        audio_chain = deeser_filter
+
+        # Chain click removal after de-esser if both present
+        if click_filter:
+            audio_chain += f";{click_filter}"
+    elif click_filter:
+        # Only click removal
+        audio_chain = click_filter
+
+    # Add room EQ (if not already in chain)
+    room_eq_filter = build_ffmpeg_eq_filter(resonant_freqs, config)
+    if room_eq_filter:
+        if audio_chain:
+            audio_chain += f";{room_eq_filter}"
+        else:
+            audio_chain = room_eq_filter
+
+    # Add crossfade if enabled (note: audio crossfade already applied above)
+    # This ensures consistent filter chain construction
+    if config.crossfade_ms > 0:
+        fade_filter = f"acrossfade=d={config.crossfade_ms / 1000:.3f}"
+        if audio_chain:
+            audio_chain += f";{fade_filter}"
+        else:
+            audio_chain = fade_filter
+
+    # Ensure formatting is always applied
+    if audio_chain:
+        audio_filter_chain = f"aformat=sample_rates=44100;{audio_chain}"
+    else:
+        audio_filter_chain = "aformat=sample_rates=44100"
+
+    if audio_filter_chain and audio_filter_chain != "aformat=sample_rates=44100":
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            eq_tmp = Path(f.name)
+            filtered_tmp = Path(f.name)
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", str(audio_tmp),
-                "-af", eq_filter,
-                str(eq_tmp),
+                "-af", audio_filter_chain,
+                str(filtered_tmp),
             ],
             check=True, capture_output=True,
         )
         audio_tmp.unlink(missing_ok=True)
-        audio_tmp = eq_tmp
+        audio_tmp = filtered_tmp
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         video_tmp = Path(f.name)
