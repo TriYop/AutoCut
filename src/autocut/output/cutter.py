@@ -353,12 +353,12 @@ def _cut_with_audio_processing(
 
     # Build the filter graph
     if deeser_filter:
-        # Sidechain de-esser outputs main stream (after split)
+        # Sidechain de-esser outputs [compressed], chain click removal to that label
         audio_chain = deeser_filter
 
         # Chain click removal after de-esser if both present
         if click_filter:
-            audio_chain += f";{click_filter}"
+            audio_chain += f";[compressed]{click_filter}"
     elif click_filter:
         # Only click removal
         audio_chain = click_filter
@@ -371,14 +371,8 @@ def _cut_with_audio_processing(
         else:
             audio_chain = room_eq_filter
 
-    # Add crossfade if enabled (note: audio crossfade already applied above)
-    # This ensures consistent filter chain construction
-    if config.crossfade_ms > 0:
-        fade_filter = f"acrossfade=d={config.crossfade_ms / 1000:.3f}"
-        if audio_chain:
-            audio_chain += f";{fade_filter}"
-        else:
-            audio_chain = fade_filter
+    # Note: crossfade is already applied via numpy at line 338 (_apply_crossfade).
+    # Do NOT add acrossfade FFmpeg filter here — it would apply crossfade twice.
 
     # Ensure formatting is always applied
     if audio_chain:

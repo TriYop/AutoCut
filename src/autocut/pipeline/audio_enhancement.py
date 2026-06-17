@@ -130,6 +130,7 @@ def build_deeser_filter(sibilant_freqs: list[float], config: AutoCutConfig) -> s
     Build an FFmpeg dynamic de-esser using sidechain compression.
     Detects sibilants (4–9 kHz) and applies threshold-based compression only when they peak.
     Returns a filter graph string with split + highpass sidechain + sidechaincompress.
+    Output label [compressed] allows chaining subsequent filters.
     """
     if not sibilant_freqs:
         return None
@@ -138,11 +139,12 @@ def build_deeser_filter(sibilant_freqs: list[float], config: AutoCutConfig) -> s
     # Split audio: one path for compression, one for sidechain detection
     # Sidechain: highpass at 4 kHz to focus on sibilant frequencies
     # When sibilants exceed threshold, compress the entire signal
+    # Output label [compressed] enables chaining downstream filters (click removal, room EQ)
     return (
         "split[main][sidechain];"
         "[sidechain]highpass=f=4000[sidechain_filtered];"
         "[main][sidechain_filtered]sidechaincompress="
-        "threshold=0.1:ratio=4:attack=0.005:release=0.05:makeup=2"
+        "threshold=0.1:ratio=4:attack=0.005:release=0.05:makeup=2[compressed]"
     )
 
 
