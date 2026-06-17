@@ -156,15 +156,8 @@ def build_click_removal_filter(click_freqs: list[float], config: AutoCutConfig) 
         return None
 
     # Transient suppressor: compand with fast attack, slow release
-    # Attacks transients quickly (1ms), releases slowly (100ms) to avoid pumping
-    # Threshold at -30dB, ratio 6:1 for gentle gating of peaks
-    return (
-        "compand="
-        "0.001|0.001:"
-        "0.001|0.001:"
-        "-30|-30:"
-        "-30|-30:"
-        "0|0:"
-        "-30|0:"
-        "0.1"
-    )
+    # attack,release: 1ms attack, 100ms release for catching transients without pumping
+    # in|out transfer curve: -inf to -30 (deep gate), 0 to -30 (gentle suppression)
+    # soft_knee: 6 dB (smooth gate transition)
+    # makeup: 2 dB (compensate for attenuation)
+    return "compand=0.001,0.1:-inf|-30,0|-30:6:2"
