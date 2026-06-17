@@ -286,6 +286,37 @@ pytest tests/test_merger.py::test_merge_overlapping
 
 ---
 
+## Audio Enhancement
+
+AutoCut includes intelligent audio cleanup features that suppress unwanted artifacts during video re-encoding.
+
+### De-esser
+
+Intelligent sibilant suppression using dynamic sidechain compression. Detects peaks in the sibilant range (4–9 kHz), then applies an FFmpeg `sidechaincompress` filter triggered by those frequencies. Only compresses when sibilants peak, preserving natural speech. Threshold (default 8 dB above noise floor) controls detection sensitivity. Enabled by default.
+
+### Click/Plosive Removal
+
+Transient suppressor using fast-attack compression. Detects sharp transients in plosive (20–500 Hz) and click (2–10 kHz) ranges, then applies FFmpeg `compand` filter with 1 ms attack and 100 ms release to gate them out without pumping artifacts. Threshold (default 12 dB above noise floor) controls detection sensitivity. Enabled by default.
+
+### How They Work
+
+- **Detection phase** (pipeline): Audio is analyzed via FFT to find problem frequencies
+- **Application phase** (re-encode): FFmpeg applies dynamic compression filters only where needed
+- Both features analyze the full audio (not just silences) to catch artifacts throughout the recording
+
+### Configuration & Control
+
+Both features are bypassable via CLI (`--no-deeser`, `--no-click-removal`) or GUI checkboxes in the Audio tab. See `AutoCutConfig` for tunable parameters:
+
+- `deeser_enabled` (default True)
+- `deeser_threshold_db` (default 8.0)
+- `click_removal_enabled` (default True)
+- `click_threshold_db` (default 12.0)
+
+These parameters flow through the pipeline (VAD stage for detection) and are applied in the video cutter (during re-encoding with `cut_video()`).
+
+---
+
 ## GUI Implementation Notes
 
 The GUI (`src/autocut/gui/`) runs the pipeline in a background `QThread` (via `worker.py`) to avoid freezing the UI. Key components:

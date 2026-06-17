@@ -2,7 +2,6 @@
 
 from autocut.pipeline.transcriber import _normalize
 
-
 # ── _normalize ────────────────────────────────────────────────────────────────
 
 def test_normalize_lowercases():

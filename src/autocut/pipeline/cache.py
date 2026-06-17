@@ -1,5 +1,6 @@
 """Pipeline result cache: persist VAD + Whisper segments to skip re-analysis on re-runs."""
 
+import contextlib
 import hashlib
 import json
 from pathlib import Path
@@ -110,9 +111,7 @@ def save(
         "vad_segments": [_seg_to_dict(s) for s in vad_segments],
         "whisper_segments": [_seg_to_dict(s) for s in whisper_segments],
     }
-    try:
+    with contextlib.suppress(OSError):
         cache_path(input_path).write_text(
             json.dumps(data, indent=2), encoding="utf-8"
         )
-    except OSError:
-        pass

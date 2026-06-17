@@ -1,10 +1,8 @@
 """Tests for autocut.pipeline.room_eq — build_ffmpeg_eq_filter (no audio I/O)."""
 
-import pytest
 
 from autocut.config import AutoCutConfig
 from autocut.pipeline.room_eq import build_ffmpeg_eq_filter
-
 
 CFG = AutoCutConfig()
 
